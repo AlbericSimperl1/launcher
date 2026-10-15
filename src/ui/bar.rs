@@ -1,4 +1,4 @@
-//! Zoekbalk met mode-knoppen en detectie van vlaggen (f / c / b + spatie).
+//! Zoekbalk met leading-icoon en detectie van vlaggen (f / c / b + spatie).
 
 use crate::modes::Mode;
 use crate::ui::icons;
@@ -9,17 +9,18 @@ use std::rc::Rc;
 pub struct Bar {
     pub root: gtk::Box,
     pub entry: gtk::Entry,
+    lead: gtk::Image,
     crumb: gtk::Label,
-    buttons: Vec<(Mode, gtk::Button, gtk::Image)>,
 }
 
 impl Bar {
-    pub fn new(on_mode: Rc<dyn Fn(Mode)>) -> Self {
+    pub fn new(_on_mode: Rc<dyn Fn(Mode)>) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         root.add_css_class("search-row");
 
-        let search_icon = icons::image("search", "dim", 22);
-        root.append(&search_icon);
+        let lead = icons::image("search", "dim", 18);
+        lead.set_visible(false);
+        root.append(&lead);
 
         let crumb = gtk::Label::new(None);
         crumb.add_css_class("crumb");
@@ -31,46 +32,33 @@ impl Bar {
         let entry = gtk::Entry::new();
         entry.add_css_class("search");
         entry.set_hexpand(true);
-        entry.set_placeholder_text(Some("..."));
+        entry.set_placeholder_text(Some("Find whatever..."));
         root.append(&entry);
-
-        let mut buttons = Vec::new();
-        for mode in Mode::BAR {
-            let btn = gtk::Button::new();
-            btn.add_css_class("mode");
-            btn.set_focusable(false);
-            btn.set_focus_on_click(false);
-            btn.set_tooltip_text(Some(mode.tooltip()));
-            let img = icons::image(mode.icon(), "fg", 18);
-            btn.set_child(Some(&img));
-            let cb = on_mode.clone();
-            btn.connect_clicked(move |_| cb(mode));
-            root.append(&btn);
-            buttons.push((mode, btn, img));
-        }
 
         Self {
             root,
             entry,
+            lead,
             crumb,
-            buttons,
         }
     }
 
     pub fn set_mode(&self, mode: Option<Mode>) {
-        for (m, btn, img) in &self.buttons {
-            let active = Some(*m) == mode;
-            if active {
-                btn.add_css_class("active");
-            } else {
-                btn.remove_css_class("active");
+        let lead_icon = match mode {
+            Some(Mode::Files) => Some("search"),
+            Some(Mode::Browser) => Some("globe"),
+            Some(Mode::Calc) => Some("plus"),
+            _ => None,
+        };
+        match lead_icon {
+            Some(name) => {
+                self.lead
+                    .set_icon_name(Some(&icons::icon_name(name, "dim")));
+                self.lead.set_visible(true);
             }
-            img.set_icon_name(Some(&icons::icon_name(
-                m.icon(),
-                if active { "white" } else { "fg" },
-            )));
+            None => self.lead.set_visible(false),
         }
-        let placeholder = mode.map_or("...", |m| m.placeholder());
+        let placeholder = mode.map_or("Find whatever...", |m| m.placeholder());
         self.entry.set_placeholder_text(Some(placeholder));
         if mode != Some(Mode::Files) {
             self.crumb.set_visible(false);

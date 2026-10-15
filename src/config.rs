@@ -40,13 +40,13 @@ impl Default for Appearance {
             blur: "auto".into(),
             font: "Inter".into(),
             accent: "#0a84ff".into(),
-            radius: 22,
-            width: 760,
+            radius: 6,
+            width: 600,
             top_margin: 140,
             opacity: 0.55,
             fallback_opacity: 0.93,
             animation_ms: 160,
-            max_height: 440,
+            max_height: 360,
         }
     }
 }
@@ -78,10 +78,18 @@ impl Default for Files {
             max_depth: 6,
             max_results: 60,
             max_index: 200_000,
-            ignore: ["node_modules", "target", "__pycache__", ".git", ".cache", ".cargo", ".rustup"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            ignore: [
+                "node_modules",
+                "target",
+                "__pycache__",
+                ".git",
+                ".cache",
+                ".cargo",
+                ".rustup",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         }
     }
 }
@@ -119,7 +127,7 @@ impl Default for Apps {
     fn default() -> Self {
         Self {
             columns: 6,
-            icon_size: 48,
+            icon_size: 40,
             extra_dirs: Vec::new(),
         }
     }

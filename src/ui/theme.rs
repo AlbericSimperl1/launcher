@@ -79,7 +79,8 @@ pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
         )
     };
     let (fg, dim) = (p.fg, p.dim);
-    let radius = cfg.radius.max(16);
+    let radius = cfg.radius;
+    let inner = (radius as f64 * 0.6).round() as u32;
     let ms = cfg.animation_ms;
     let font = &cfg.font;
     let accent = &cfg.accent;
@@ -88,7 +89,7 @@ pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
     format!(
         r#"
 window.launcher {{ background: transparent; }}
-window.launcher * {{ font-family: "{font}", "Mononoki Nerd Font Mono", "SF Pro Display", "Inter", "Cantarell", sans-serif; }}
+window.launcher * {{ font-family: "{font}", "SF Pro Display", "Inter", "Cantarell", sans-serif; }}
 
 .card {{
   background-color: {bg};
@@ -103,50 +104,50 @@ window.launcher * {{ font-family: "{font}", "Mononoki Nerd Font Mono", "SF Pro D
 }}
 .card.open {{ opacity: 1; transform: scale(1); }}
 
-.search-row {{ padding: 2px 6px 2px 8px; }}
+.search-row {{ padding: 0 4px 0 6px; }}
 entry.search {{
   background: none; border: none; box-shadow: none; outline: none;
   color: {fg}; caret-color: {accent};
-  font-size: 22px; font-weight: 300; min-height: 44px; padding: 0 6px;
+  font-size: 18px; font-weight: 300; min-height: 36px; padding: 0 4px;
 }}
 entry.search > text > placeholder {{ color: {dim}; }}
-.crumb {{ color: {dim}; font-size: 15px; font-weight: 500; padding: 0 2px 0 6px; }}
+.crumb {{ color: {dim}; font-size: 13px; font-weight: 500; padding: 0 2px 0 4px; }}
 
 button.mode {{
-  min-width: 40px; min-height: 40px; padding: 0;
-  border-radius: 13px; border: none; box-shadow: none; outline: none;
+  min-width: 32px; min-height: 32px; padding: 0;
+  border-radius: {inner}px; border: none; box-shadow: none; outline: none;
   background: {chip}; color: {fg};
   transition: background {ms}ms ease;
 }}
 button.mode:hover {{ background: {chip_hover}; }}
 button.mode.active {{ background: {accent}; }}
 
-.results-sep {{ background: {sep}; min-height: 1px; margin: 12px 8px 6px 8px; }}
-.divider {{ background: {sep}; min-height: 1px; margin: 10px 14px; }}
+.results-sep {{ background: {sep}; min-height: 1px; margin: 10px 6px 6px 6px; }}
+.divider {{ background: {sep}; min-height: 1px; margin: 8px 12px; }}
 
-.row {{ padding: 8px 12px; border-radius: 13px; transition: background 120ms ease; }}
+.row {{ padding: 6px 10px; border-radius: {inner}px; transition: background 120ms ease; }}
 .row.selected {{ background: {sel}; }}
-.row .title {{ font-size: 15px; font-weight: 500; }}
-.row .subtitle {{ font-size: 12px; color: {dim}; }}
+.row .title {{ font-size: 14px; font-weight: 500; }}
+.row .subtitle {{ font-size: 11px; color: {dim}; }}
 
-.tile {{ padding: 12px 4px 8px 4px; border-radius: 16px; transition: background 120ms ease; }}
+.tile {{ padding: 8px 2px 6px 2px; border-radius: {inner}px; transition: background 120ms ease; }}
 .tile.selected {{ background: {sel}; }}
-.tile .name {{ font-size: 12px; }}
+.tile .name {{ font-size: 11px; }}
 
-.empty {{ color: {dim}; font-size: 14px; padding: 28px 0; }}
-.calc-result {{ font-size: 44px; font-weight: 200; }}
-.calc-expr {{ color: {dim}; font-size: 14px; }}
-.calc-hint {{ color: {dim}; font-size: 12px; }}
-.calc-error {{ color: {error}; font-size: 20px; font-weight: 400; }}
+.empty {{ color: {dim}; font-size: 13px; padding: 20px 0; }}
+.calc-result {{ font-size: 36px; font-weight: 200; }}
+.calc-expr {{ color: {dim}; font-size: 13px; }}
+.calc-hint {{ color: {dim}; font-size: 11px; }}
+.calc-error {{ color: {error}; font-size: 18px; font-weight: 400; }}
 
 popover.ctx-menu > contents {{
   background: {menu_bg}; color: {fg};
-  border: 1px solid {border}; border-radius: 14px; padding: 6px;
+  border: 1px solid {border}; border-radius: {inner}px; padding: 4px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
 }}
 popover.ctx-menu button {{
   background: none; border: none; box-shadow: none; outline: none;
-  color: {fg}; border-radius: 9px; padding: 7px 14px; min-height: 0;
+  color: {fg}; border-radius: {inner}px; padding: 6px 12px; min-height: 0;
 }}
 popover.ctx-menu button:hover {{ background: {sel}; }}
 scrolledwindow undershoot, scrolledwindow overshoot {{ background: none; }}
