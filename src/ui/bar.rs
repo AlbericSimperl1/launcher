@@ -2,8 +2,8 @@
 
 use crate::modes::Mode;
 use crate::ui::icons;
-use gtk4 as gtk;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use std::rc::Rc;
 
 pub struct Bar {
@@ -31,7 +31,7 @@ impl Bar {
         let entry = gtk::Entry::new();
         entry.add_css_class("search");
         entry.set_hexpand(true);
-        entry.set_placeholder_text(Some("Zoek…  (f bestanden · c rekenen · b browser)"));
+        entry.set_placeholder_text(Some("..."));
         root.append(&entry);
 
         let mut buttons = Vec::new();
@@ -49,7 +49,12 @@ impl Bar {
             buttons.push((mode, btn, img));
         }
 
-        Self { root, entry, crumb, buttons }
+        Self {
+            root,
+            entry,
+            crumb,
+            buttons,
+        }
     }
 
     pub fn set_mode(&self, mode: Option<Mode>) {
@@ -60,9 +65,12 @@ impl Bar {
             } else {
                 btn.remove_css_class("active");
             }
-            img.set_icon_name(Some(&icons::icon_name(m.icon(), if active { "white" } else { "fg" })));
+            img.set_icon_name(Some(&icons::icon_name(
+                m.icon(),
+                if active { "white" } else { "fg" },
+            )));
         }
-        let placeholder = mode.map_or("Zoek…  (f bestanden · c rekenen · b browser)", |m| m.placeholder());
+        let placeholder = mode.map_or("...", |m| m.placeholder());
         self.entry.set_placeholder_text(Some(placeholder));
         if mode != Some(Mode::Files) {
             self.crumb.set_visible(false);

@@ -1,0 +1,38 @@
+# ~/.config/rust-launcher/config.toml  — alle opties met hun standaardwaarde.
+
+[appearance]
+theme = "auto"            # "auto" | "dark" | "light"
+blur = "on"             # "auto" (vraagt Hyprland) | "on" | "off"
+font = "Mononoki Nerd Font Mono"            # valt terug op SF Pro Display / Cantarell / sans-serif
+accent = "#0a84ff"
+radius = 22               # afgeronde hoeken in px (minimaal 16)
+width = 560               # breedte van de kaart in px
+top_margin = 140          # afstand tot de bovenkant van het scherm in px
+opacity = 0.55            # achtergronddekking mét blur
+fallback_opacity = 0.93   # achtergronddekking zónder blur
+animation_ms = 160        # duur van fade/scale-animaties
+max_height = 440          # maximale hoogte van het resultatengebied in px
+
+[files]
+start_dir = "~"
+editor = ""               # leeg = $EDITOR; bv. "code", "nvim", "kitty -e hx"
+file_manager = ""         # leeg = xdg-open; bv. "nautilus", "dolphin", "thunar"
+terminal = "kitty"        # gebruikt voor terminal-editors (nvim, vim, nano, hx, ...)
+show_hidden = false       # togglen kan met Ctrl+H
+max_depth = 6
+max_results = 60
+max_index = 200000
+ignore = ["node_modules", "target", "__pycache__", ".git", ".cache", ".cargo", ".rustup"]
+
+[browser]
+command = ""              # leeg = xdg-open; bv. "firefox --new-tab"
+search_url = "https://duckduckgo.com/?q={}"
+bookmarks_path = ""       # leeg = automatisch (Firefox/LibreWolf/Zen places.sqlite, Chromium/Brave/Vivaldi/Edge Bookmarks)
+
+[apps]
+columns = 6
+icon_size = 32
+extra_dirs = []           # extra mappen met .desktop-bestanden
+
+[calc]
+close_on_copy = false     # sluit de launcher na Enter (kopiëren)

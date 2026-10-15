@@ -48,10 +48,10 @@ impl Mode {
 
     pub fn placeholder(self) -> &'static str {
         match self {
-            Mode::Apps => "Zoek apps…",
-            Mode::Files => "Zoek bestanden en mappen…",
-            Mode::Calc => "Typ een som, bv. sqrt(16) * 2",
-            Mode::Browser => "Zoek bookmarks, typ een URL of zoekterm…",
+            Mode::Apps => "Find an app...",
+            Mode::Files => "Find folders and files",
+            Mode::Calc => "Calculate...",
+            Mode::Browser => "Browse the web or bookmarks...",
         }
     }
 }

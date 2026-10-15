@@ -11,9 +11,15 @@ pub struct Palette {
 
 pub fn palette(dark: bool) -> Palette {
     if dark {
-        Palette { fg: "#f5f5f7", dim: "#a1a1a6" }
+        Palette {
+            fg: "#f5f5f7",
+            dim: "#a1a1a6",
+        }
     } else {
-        Palette { fg: "#1d1d1f", dim: "#6e6e73" }
+        Palette {
+            fg: "#1d1d1f",
+            dim: "#6e6e73",
+        }
     }
 }
 
@@ -22,9 +28,13 @@ pub fn resolve_dark(cfg: &Appearance) -> bool {
         "dark" => true,
         "light" => false,
         _ => {
-            let Some(settings) = gtk::Settings::default() else { return true };
+            let Some(settings) = gtk::Settings::default() else {
+                return true;
+            };
             let name = settings.gtk_theme_name().unwrap_or_default().to_lowercase();
-            settings.is_gtk_application_prefer_dark_theme() || name.contains("dark") || !name.contains("light")
+            settings.is_gtk_application_prefer_dark_theme()
+                || name.contains("dark")
+                || !name.contains("light")
         }
     }
 }
@@ -39,7 +49,12 @@ pub fn resolve_blur(cfg: &Appearance) -> bool {
 
 pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
     let p = palette(dark);
-    let alpha = if blur { cfg.opacity } else { cfg.fallback_opacity }.clamp(0.0, 1.0);
+    let alpha = if blur {
+        cfg.opacity
+    } else {
+        cfg.fallback_opacity
+    }
+    .clamp(0.0, 1.0);
     let (bg, border, chip, chip_hover, sel, sep, menu_bg, error) = if dark {
         (
             format!("rgba(28, 28, 30, {alpha})"),
@@ -73,7 +88,7 @@ pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
     format!(
         r#"
 window.launcher {{ background: transparent; }}
-window.launcher * {{ font-family: "{font}", "SF Pro Display", "Inter", "Cantarell", sans-serif; }}
+window.launcher * {{ font-family: "{font}", "Mononoki Nerd Font Mono", "SF Pro Display", "Inter", "Cantarell", sans-serif; }}
 
 .card {{
   background-color: {bg};

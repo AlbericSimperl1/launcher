@@ -12,10 +12,10 @@ use crate::ui::results::{CalcView, Results};
 use crate::ui::{icons, theme};
 use crate::util::{self, Fuzzy};
 
-use gtk4 as gtk;
 use gtk::gdk::{Key, ModifierType};
 use gtk::glib;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -32,8 +32,15 @@ const MAX_BOOKMARK_ROWS: usize = 1000;
 pub enum Msg {
     Apps(Vec<DesktopApp>),
     Bookmarks(Vec<Bookmark>),
-    FilesIndexed { root: PathBuf, hidden: bool, entries: Arc<Vec<FileEntry>> },
-    FileResults { gen: u64, entries: Vec<FileEntry> },
+    FilesIndexed {
+        root: PathBuf,
+        hidden: bool,
+        entries: Arc<Vec<FileEntry>>,
+    },
+    FileResults {
+        gen: u64,
+        entries: Vec<FileEntry>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -84,7 +91,12 @@ pub struct Launcher {
 }
 
 impl Launcher {
-    pub fn new(app: &gtk::Application, cfg: Config, rt: Handle, tx: UnboundedSender<Msg>) -> Rc<Self> {
+    pub fn new(
+        app: &gtk::Application,
+        cfg: Config,
+        rt: Handle,
+        tx: UnboundedSender<Msg>,
+    ) -> Rc<Self> {
         let dark = theme::resolve_dark(&cfg.appearance);
         let blur = theme::resolve_blur(&cfg.appearance);
         tracing::info!("thema: dark={dark} blur={blur}");
@@ -93,13 +105,16 @@ impl Launcher {
         let provider = gtk::CssProvider::new();
         provider.load_from_data(&theme::css(&cfg.appearance, dark, blur));
         if let Some(display) = gtk::gdk::Display::default() {
-            gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_USER);
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
         }
 
         let window = gtk::ApplicationWindow::builder()
             .application(app)
             .decorated(false)
-            .resizable(false)
             .build();
         window.add_css_class("launcher");
         window.init_layer_shell();
@@ -119,14 +134,18 @@ impl Launcher {
         card.add_css_class("card");
         card.set_width_request(cfg.appearance.width);
         card.set_halign(gtk::Align::Center);
-        card.set_valign(gtk::Align::Start);
-        card.set_margin_top(cfg.appearance.top_margin);
+        card.set_valign(gtk::Align::Center);
+        card.set_vexpand(true);
         root.append(&card);
         window.set_child(Some(&root));
 
         let files_root = {
             let p = util::expand_tilde(&cfg.files.start_dir);
-            if p.is_dir() { p } else { util::home() }
+            if p.is_dir() {
+                p
+            } else {
+                util::home()
+            }
         };
 
         let launcher = Rc::new_cyclic(|weak: &std::rc::Weak<Launcher>| {
@@ -180,7 +199,9 @@ impl Launcher {
 
     fn connect_signals(self: &Rc<Self>, root: gtk::Box) {
         let me = self.clone();
-        self.bar.entry.connect_changed(move |_| me.on_text_changed());
+        self.bar
+            .entry
+            .connect_changed(move |_| me.on_text_changed());
 
         let key = gtk::EventControllerKey::new();
         key.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -239,7 +260,9 @@ impl Launcher {
         self.window.present();
         self.bar.entry.grab_focus();
         let card = self.card.clone();
-        glib::timeout_add_local_once(Duration::from_millis(20), move || card.add_css_class("open"));
+        glib::timeout_add_local_once(Duration::from_millis(20), move || {
+            card.add_css_class("open")
+        });
         self.reload_apps();
     }
 
@@ -289,6 +312,25 @@ impl Launcher {
         self.suppress.set(false);
         self.bar.set_mode(None);
         self.results.set_open(false);
+    }
+
+    fn back_to_general(self: &Rc<Self>) {
+        {
+            let mut ui = self.ui.borrow_mut();
+            ui.mode = None;
+            ui.explicit = false;
+            ui.selected = 0;
+            ui.rows.clear();
+            ui.files_cwd = ui.files_root.clone();
+            ui.file_gen += 1;
+            ui.calc_value = None;
+            ui.calc_text = None;
+        }
+        self.clear_entry();
+        self.bar.set_mode(None);
+        self.bar.set_crumb(None);
+        self.results.set_open(false);
+        self.bar.entry.grab_focus_without_selecting();
     }
 
     // ---------------------------------------------------------------- modus & invoer
@@ -363,7 +405,12 @@ impl Launcher {
     fn reload_apps(&self) {
         let (tx, extra) = (
             self.tx.clone(),
-            self.cfg.apps.extra_dirs.iter().map(|d| util::expand_tilde(d)).collect::<Vec<_>>(),
+            self.cfg
+                .apps
+                .extra_dirs
+                .iter()
+                .map(|d| util::expand_tilde(d))
+                .collect::<Vec<_>>(),
         );
         self.rt.spawn_blocking(move || {
             let _ = tx.send(Msg::Apps(desktop::load_apps(&extra)));
@@ -403,7 +450,9 @@ impl Launcher {
     fn show_app_menu(self: &Rc<Self>, idx: usize, widget: &gtk::Widget, x: f64, y: f64) {
         let (app, pinned) = {
             let mut ui = self.ui.borrow_mut();
-            let Some(app) = ui.view_apps.get(idx).cloned() else { return };
+            let Some(app) = ui.view_apps.get(idx).cloned() else {
+                return;
+            };
             ui.selected = idx;
             let pinned = ui.state.is_pinned(&app.id);
             (app, pinned)
@@ -505,7 +554,11 @@ impl Launcher {
         match cached {
             Some(index) => {
                 let gen = self.ui.borrow().file_gen;
-                let (tx, q, max) = (self.tx.clone(), query.to_string(), self.cfg.files.max_results);
+                let (tx, q, max) = (
+                    self.tx.clone(),
+                    query.to_string(),
+                    self.cfg.files.max_results,
+                );
                 self.rt.spawn_blocking(move || {
                     let entries = files::filter(&index, &q, max);
                     let _ = tx.send(Msg::FileResults { gen, entries });
@@ -518,8 +571,13 @@ impl Launcher {
                 if start {
                     let (tx, c) = (self.tx.clone(), self.cfg.files.clone());
                     self.rt.spawn_blocking(move || {
-                        let entries = files::scan(&cwd, hidden, c.max_depth, &c.ignore, c.max_index);
-                        let _ = tx.send(Msg::FilesIndexed { root: cwd, hidden, entries: Arc::new(entries) });
+                        let entries =
+                            files::scan(&cwd, hidden, c.max_depth, &c.ignore, c.max_index);
+                        let _ = tx.send(Msg::FilesIndexed {
+                            root: cwd,
+                            hidden,
+                            entries: Arc::new(entries),
+                        });
                     });
                 }
             }
@@ -530,10 +588,19 @@ impl Launcher {
         let rows = entries
             .into_iter()
             .map(|e| ListRow {
-                icon: if e.is_dir { "folder" } else if e.is_exec { "terminal" } else { "file" },
+                icon: if e.is_dir {
+                    "folder"
+                } else if e.is_exec {
+                    "terminal"
+                } else {
+                    "file"
+                },
                 subtitle: util::pretty_path(e.path.parent().unwrap_or(&e.path)),
                 title: e.name,
-                action: RowAction::Path { path: e.path, is_dir: e.is_dir },
+                action: RowAction::Path {
+                    path: e.path,
+                    is_dir: e.is_dir,
+                },
             })
             .collect();
         self.set_rows(rows);
@@ -550,7 +617,8 @@ impl Launcher {
             self.results.show_empty("Geen resultaten");
         } else {
             let me = self.clone();
-            self.results.set_rows(&rows, selected, Rc::new(move |i| me.activate_index(i)));
+            self.results
+                .set_rows(&rows, selected, Rc::new(move |i| me.activate_index(i)));
         }
         self.results.set_open(true);
     }
@@ -596,7 +664,10 @@ impl Launcher {
     fn ensure_bookmarks(&self) {
         {
             let mut ui = self.ui.borrow_mut();
-            if ui.bookmarks_at.is_some_and(|t| t.elapsed() < Duration::from_secs(60)) {
+            if ui
+                .bookmarks_at
+                .is_some_and(|t| t.elapsed() < Duration::from_secs(60))
+            {
                 return;
             }
             ui.bookmarks_at = Some(Instant::now());
@@ -620,7 +691,12 @@ impl Launcher {
         {
             let ui = self.ui.borrow();
             if q.is_empty() {
-                rows.extend(ui.bookmarks.iter().take(MAX_BOOKMARK_ROWS).map(bookmark_row));
+                rows.extend(
+                    ui.bookmarks
+                        .iter()
+                        .take(MAX_BOOKMARK_ROWS)
+                        .map(bookmark_row),
+                );
             } else {
                 rows.push(match browser::looks_like_url(q) {
                     Some(url) => ListRow {
@@ -672,7 +748,10 @@ impl Launcher {
                     let s = calc::format(v);
                     ui.calc_value = Some(v);
                     ui.calc_text = Some(s.clone());
-                    CalcView::Value { expr: text.trim().to_string(), result: s }
+                    CalcView::Value {
+                        expr: text.trim().to_string(),
+                        result: s,
+                    }
                 }
                 Err(e) => {
                     ui.calc_value = None;
@@ -778,11 +857,16 @@ impl Launcher {
     // ---------------------------------------------------------------- toetsen
 
     fn on_escape(self: &Rc<Self>) {
-        let in_files = self.ui.borrow().mode == Some(Mode::Files);
-        if in_files && self.files_up() {
-            return;
+        let mode = self.ui.borrow().mode;
+        match mode {
+            Some(Mode::Files) => {
+                if !self.files_up() {
+                    self.back_to_general();
+                }
+            }
+            Some(Mode::Calc) | Some(Mode::Browser) => self.back_to_general(),
+            _ => self.hide(),
         }
-        self.hide();
     }
 
     fn move_selection(self: &Rc<Self>, dir: Dir) {
@@ -792,7 +876,8 @@ impl Launcher {
                 let new = {
                     let mut ui = self.ui.borrow_mut();
                     let cols = self.cfg.apps.columns.max(1);
-                    ui.selected = grid::navigate(ui.selected, ui.view_apps.len(), ui.pinned_count, cols, dir);
+                    ui.selected =
+                        grid::navigate(ui.selected, ui.view_apps.len(), ui.pinned_count, cols, dir);
                     ui.selected
                 };
                 self.results.grid.select(new);
@@ -829,6 +914,22 @@ impl Launcher {
                 self.on_escape();
                 stop
             }
+            Key::BackSpace
+                if self.bar.entry.text().is_empty()
+                    && matches!(
+                        mode,
+                        Some(Mode::Files) | Some(Mode::Calc) | Some(Mode::Browser)
+                    ) =>
+            {
+                if mode == Some(Mode::Files) {
+                    if !self.files_up() {
+                        self.back_to_general();
+                    }
+                } else {
+                    self.back_to_general();
+                }
+                stop
+            }
             Key::Return | Key::KP_Enter | Key::ISO_Enter => {
                 self.activate(if ctrl {
                     How::Manager
@@ -858,7 +959,16 @@ impl Launcher {
                     self.move_selection(Dir::Left);
                     stop
                 }
-                Some(Mode::Files) if self.bar.entry.position() == 0 && self.files_up() => stop,
+                Some(Mode::Files) if self.bar.entry.position() == 0 => {
+                    if !self.files_up() {
+                        self.back_to_general();
+                    }
+                    stop
+                }
+                Some(Mode::Calc) | Some(Mode::Browser) if self.bar.entry.position() == 0 => {
+                    self.back_to_general();
+                    stop
+                }
                 _ => glib::Propagation::Proceed,
             },
             Key::Right => match mode {
@@ -867,7 +977,8 @@ impl Launcher {
                     stop
                 }
                 Some(Mode::Files) => {
-                    let at_end = self.bar.entry.position() as usize >= self.bar.entry.text().chars().count();
+                    let at_end =
+                        self.bar.entry.position() as usize >= self.bar.entry.text().chars().count();
                     let target = {
                         let ui = self.ui.borrow();
                         match ui.rows.get(ui.selected).map(|r| &r.action) {
@@ -923,7 +1034,11 @@ impl Launcher {
                     self.refresh(false);
                 }
             }
-            Msg::FilesIndexed { root, hidden, entries } => {
+            Msg::FilesIndexed {
+                root,
+                hidden,
+                entries,
+            } => {
                 let current = {
                     let mut ui = self.ui.borrow_mut();
                     ui.indexing.remove(&(root.clone(), hidden));

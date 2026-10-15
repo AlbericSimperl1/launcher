@@ -1,0 +1,25 @@
+[package]
+name = "rust-launcher"
+version = "0.1.0"
+edition = "2021"
+description = "Apple-achtige frosted-glass launcher voor Wayland/Hyprland (gtk4 + layer-shell)"
+license = "MIT"
+
+[dependencies]
+gtk4 = { version = "0.9.6", features = ["v4_10"] }
+gtk4-layer-shell = "0.4.0"
+tokio = { version = "1.40", features = ["rt-multi-thread", "sync", "time"] }
+nucleo-matcher = "0.3.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+dirs = "5.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
