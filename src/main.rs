@@ -37,6 +37,7 @@ enum Cmd {
     Hide,
     Toggle,
     UnhideAll,
+    Reload,
     Help,
 }
 
@@ -47,6 +48,8 @@ fn parse(args: &[String]) -> Cmd {
             "--show" => return Cmd::Show,
             "--hide" => return Cmd::Hide,
             "--unhide-all" => return Cmd::UnhideAll,
+            "--reload" => return Cmd::Reload, // ← nieuw
+
             "--help" | "-h" => return Cmd::Help,
             _ => {}
         }
@@ -111,6 +114,8 @@ fn main() -> glib::ExitCode {
             Cmd::Help => {}
             Cmd::Show => instance.show(),
             Cmd::Hide => instance.hide(),
+            Cmd::Reload => instance.reload(),
+
             Cmd::Toggle => instance.toggle(),
             Cmd::UnhideAll => instance.unhide_all(),
             Cmd::Daemon | Cmd::Help => {}

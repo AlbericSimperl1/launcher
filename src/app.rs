@@ -1,7 +1,6 @@
 //! Root-state van de launcher: venster, event-afhandeling en koppeling tussen UI en modi.
 
 use crate::bookmarks::{self, Bookmark};
-// use crate::config::Config;
 use crate::config::{self, Config};
 use crate::desktop::{self, DesktopApp};
 use crate::modes::files::{self, FileEntry};
@@ -20,7 +19,7 @@ use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -88,6 +87,9 @@ pub struct Launcher {
     tx: UnboundedSender<Msg>,
     suppress: Cell<bool>,
     ui: RefCell<Ui>,
+    css: RefCell<Option<gtk::CssProvider>>,
+    watcher: RefCell<Option<gtk::gio::FileMonitor>>,
+    reload_pending: Cell<bool>,
 }
 
 impl Launcher {
@@ -188,10 +190,14 @@ impl Launcher {
                     calc_text: None,
                 }),
                 cfg: RefCell::new(Rc::new(cfg)),
+                css: RefCell::new(Some(provider)),
+                watcher: RefCell::new(None),
+                reload_pending: Cell::new(false),
             }
         });
 
         launcher.connect_signals(root);
+        launcher.watch_config();
         launcher.reload_apps();
         launcher
     }
@@ -322,6 +328,87 @@ impl Launcher {
         self.bar.set_crumb(None);
         self.results.set_open(false);
         self.bar.entry.grab_focus_without_selecting();
+    }
+
+    // ---------------------------------------------------------------- config-watch & reload
+
+    fn watch_config(self: &Rc<Self>) {
+        let dir = util::config_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let gfile = gtk::gio::File::for_path(&dir);
+        match gfile.monitor_directory(
+            gtk::gio::FileMonitorFlags::WATCH_MOVES,
+            gtk::gio::Cancellable::NONE,
+        ) {
+            Ok(m) => {
+                let me = self.clone();
+                m.connect_changed(move |_, file, _, _| {
+                    if file.basename().as_deref() == Some(Path::new("config.toml")) {
+                        me.schedule_reload();
+                    }
+                });
+                *self.watcher.borrow_mut() = Some(m);
+                tracing::info!("config-watch actief op {}", dir.display());
+            }
+            Err(e) => tracing::warn!("config-watch mislukt: {e}"),
+        }
+    }
+
+    fn schedule_reload(self: &Rc<Self>) {
+        // Editors triggeren vaak meerdere events (write + rename).
+        // Debounce: alleen de eerste keer een timeout inplannen.
+        if self.reload_pending.replace(true) {
+            return;
+        }
+        let me = self.clone();
+        glib::timeout_add_local_once(Duration::from_millis(250), move || {
+            me.reload_pending.set(false);
+            me.reload();
+        });
+    }
+
+    pub fn reload(self: &Rc<Self>) {
+        tracing::info!("config herladen");
+        *self.cfg.borrow_mut() = Rc::new(config::load());
+        let cfg = self.cfg();
+
+        let dark = theme::resolve_dark(&cfg.appearance);
+        let blur = theme::resolve_blur(&cfg.appearance);
+        icons::install(dark);
+
+        if let Some(display) = gtk::gdk::Display::default() {
+            let old = self.css.borrow_mut().take();
+            if let Some(old_provider) = old {
+                gtk::style_context_remove_provider_for_display(&display, &old_provider);
+            }
+            let provider = gtk::CssProvider::new();
+            provider.load_from_data(&theme::css(&cfg.appearance, dark, blur));
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
+            *self.css.borrow_mut() = Some(provider);
+        }
+
+        self.card.set_width_request(cfg.appearance.width);
+
+        {
+            let mut ui = self.ui.borrow_mut();
+            let new_root = util::expand_tilde(&cfg.files.start_dir);
+            if new_root.is_dir() {
+                ui.files_root = new_root;
+            }
+            ui.files_cwd = ui.files_root.clone();
+            ui.show_hidden = cfg.files.show_hidden;
+            ui.index_cache.clear();
+            ui.indexing.clear();
+            ui.file_gen += 1;
+            ui.selected = 0;
+        }
+
+        self.refresh(true);
+        self.reload_apps();
     }
 
     // ---------------------------------------------------------------- modus & invoer
@@ -1016,6 +1103,7 @@ impl Launcher {
     }
 
     // ---------------------------------------------------------------- achtergrondberichten
+
     pub fn prewarm(self: &Rc<Self>) {
         if self.ui.borrow().visible {
             return;
@@ -1032,6 +1120,7 @@ impl Launcher {
             me.window.set_keyboard_mode(KeyboardMode::Exclusive);
         });
     }
+
     fn handle(self: &Rc<Self>, msg: Msg) {
         match msg {
             Msg::Apps(list) => {
