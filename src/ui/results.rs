@@ -2,9 +2,9 @@
 
 use crate::modes::ListRow;
 use crate::ui::{grid::Grid, icons};
-use gtk4 as gtk;
 use gtk::glib;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -30,7 +30,9 @@ pub struct Results {
 pub fn ensure_visible(scroll: &gtk::ScrolledWindow, container: &gtk::Widget, child: &gtk::Widget) {
     let (scroll, container, child) = (scroll.clone(), container.clone(), child.clone());
     glib::idle_add_local_once(move || {
-        let Some(b) = child.compute_bounds(&container) else { return };
+        let Some(b) = child.compute_bounds(&container) else {
+            return;
+        };
         let adj = scroll.vadjustment();
         let (y, h) = (b.y() as f64, b.height() as f64);
         if y < adj.value() {
@@ -140,7 +142,9 @@ impl Results {
                 self.calc_expr.set_text(&expr);
                 self.calc_result.add_css_class("calc-result");
                 self.calc_result.set_text(&format!("= {result}"));
-                self.calc_hint.set_text("Enter: kopieer · Ctrl+Enter / Tab: verder rekenen met dit resultaat");
+                self.calc_hint.set_text(
+                    "Enter: kopieer · Ctrl+Enter / Tab: verder rekenen met dit resultaat",
+                );
             }
             CalcView::Error(msg) => {
                 self.calc_expr.set_text("");
@@ -196,7 +200,11 @@ impl Results {
         for (i, r) in self.rows.borrow().iter().enumerate() {
             if i == selected {
                 r.add_css_class("selected");
-                ensure_visible(&self.list_scroll, self.list_box.upcast_ref(), r.upcast_ref());
+                ensure_visible(
+                    &self.list_scroll,
+                    self.list_box.upcast_ref(),
+                    r.upcast_ref(),
+                );
             } else {
                 r.remove_css_class("selected");
             }

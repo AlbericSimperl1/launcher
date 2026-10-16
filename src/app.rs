@@ -154,7 +154,7 @@ impl Launcher {
                     l.choose_mode(m);
                 }
             }));
-            let results = Results::new(cfg.appearance.max_height, cfg.appearance.animation_ms);
+            let results = Results::new(cfg.appearance.max_height, 0);
             card.append(&bar.root);
             card.append(&results.revealer);
             Launcher {
@@ -252,10 +252,8 @@ impl Launcher {
             }
             ui.visible = true;
         }
-        self.window.set_visible(true);
         self.window.present();
         self.bar.entry.grab_focus();
-        self.reload_apps();
     }
 
     pub fn hide(self: &Rc<Self>) {
@@ -268,6 +266,7 @@ impl Launcher {
         }
         self.window.set_visible(false);
         self.reset();
+        self.reload_apps();
     }
 
     pub fn unhide_all(self: &Rc<Self>) {

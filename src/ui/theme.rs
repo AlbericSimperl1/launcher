@@ -81,7 +81,7 @@ pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
     let (fg, dim) = (p.fg, p.dim);
     let radius = cfg.radius;
     let inner = (radius as f64 * 0.6).round() as u32;
-    let ms = cfg.animation_ms;
+    // let ms = cfg.animation_ms;
     let font = &cfg.font;
     let accent = &cfg.accent;
     let shadow_a = if dark { 0.45 } else { 0.22 };
@@ -112,7 +112,6 @@ button.mode {{
   min-width: 32px; min-height: 32px; padding: 0;
   border-radius: {inner}px; border: none; box-shadow: none; outline: none;
   background: {chip}; color: {fg};
-  transition: background {ms}ms ease;
 }}
 button.mode:hover {{ background: {chip_hover}; }}
 button.mode.active {{ background: {accent}; }}
