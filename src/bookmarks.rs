@@ -1,8 +1,7 @@
-//! Bookmarks inlezen: Firefox-forks (places.sqlite) en Chromium-browsers (JSON).
-
 use crate::util;
 use rusqlite::Connection;
 use std::collections::HashSet;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -11,17 +10,44 @@ pub struct Bookmark {
     pub url: String,
 }
 
+const REL: &[&str] = &[
+    ".mozilla/firefox",
+    ".config/mozilla/firefox",
+    ".librewolf",
+    ".config/librewolf",
+    ".zen",
+    ".config/zen",
+    ".floorp",
+    ".config/floorp",
+    ".waterfox",
+    "snap/firefox/common/.mozilla/firefox",
+    ".config/chromium",
+    ".config/google-chrome",
+    ".config/google-chrome-beta",
+    ".config/BraveSoftware/Brave-Browser",
+    ".config/vivaldi",
+    ".config/microsoft-edge",
+    ".config/thorium",
+    "snap/chromium/common/chromium",
+];
+
 pub fn load(path_override: &str) -> Vec<Bookmark> {
-    let mut all = Vec::new();
-    if !path_override.trim().is_empty() {
-        let p = util::expand_tilde(path_override.trim());
-        all.extend(load_path(&p));
+    let o = path_override.trim();
+    let files: Vec<PathBuf> = if o.is_empty() {
+        default_roots().iter().flat_map(|r| in_dir(r)).collect()
     } else {
-        for p in firefox_dbs() {
-            all.extend(load_path(&p));
+        let p = util::expand_tilde(o);
+        if p.is_dir() {
+            in_dir(&p)
+        } else {
+            vec![p]
         }
-        for p in chromium_files() {
-            all.extend(load_path(&p));
+    };
+    let mut seen_files = HashSet::new();
+    let mut all = Vec::new();
+    for f in files {
+        if seen_files.insert(f.clone()) {
+            all.extend(load_path(&f));
         }
     }
     let mut seen = HashSet::new();
@@ -30,8 +56,53 @@ pub fn load(path_override: &str) -> Vec<Bookmark> {
     all
 }
 
+fn default_roots() -> Vec<PathBuf> {
+    let h = util::home();
+    let cfg = dirs::config_dir().unwrap_or_else(|| h.join(".config"));
+    let mut out = Vec::new();
+    for r in REL {
+        out.push(h.join(r));
+        if let Some(rest) = r.strip_prefix(".config/") {
+            out.push(cfg.join(rest));
+        }
+    }
+    if let Ok(rd) = std::fs::read_dir(h.join(".var/app")) {
+        for app in rd.flatten() {
+            for r in REL {
+                out.push(app.path().join(r.replacen(".config/", "config/", 1)));
+            }
+        }
+    }
+    out
+}
+
+fn in_dir(d: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![d.to_path_buf()];
+    if let Ok(rd) = std::fs::read_dir(d) {
+        dirs.extend(rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()));
+    }
+    let mut v = Vec::new();
+    for x in dirs {
+        for f in ["places.sqlite", "Bookmarks"] {
+            let p = x.join(f);
+            if p.is_file() {
+                v.push(p);
+            }
+        }
+    }
+    v
+}
+
+fn is_sqlite(p: &Path) -> bool {
+    let mut h = [0u8; 15];
+    std::fs::File::open(p)
+        .and_then(|mut f| f.read_exact(&mut h))
+        .is_ok()
+        && &h == b"SQLite format 3"
+}
+
 fn load_path(p: &Path) -> Vec<Bookmark> {
-    let res = if p.extension().and_then(|e| e.to_str()) == Some("sqlite") {
+    let res = if is_sqlite(p) {
         read_firefox(p)
     } else {
         read_chromium(p)
@@ -42,48 +113,7 @@ fn load_path(p: &Path) -> Vec<Bookmark> {
     })
 }
 
-fn firefox_dbs() -> Vec<PathBuf> {
-    let h = util::home();
-    let roots = [
-        h.join(".mozilla/firefox"),
-        h.join(".config/mozilla/firefox"),
-        h.join(".librewolf"),
-        h.join(".zen"),
-        h.join(".var/app/org.mozilla.firefox/.mozilla/firefox"),
-    ];
-    let mut found = Vec::new();
-    for root in roots {
-        let Ok(rd) = std::fs::read_dir(&root) else { continue };
-        let best = rd
-            .flatten()
-            .map(|e| e.path().join("places.sqlite"))
-            .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p)))
-            .max_by_key(|(t, _)| *t);
-        if let Some((_, p)) = best {
-            found.push(p);
-        }
-    }
-    found
-}
-
-fn chromium_files() -> Vec<PathBuf> {
-    let cfg = dirs::config_dir().unwrap_or_else(|| util::home().join(".config"));
-    [
-        "chromium",
-        "google-chrome",
-        "BraveSoftware/Brave-Browser",
-        "vivaldi",
-        "microsoft-edge",
-        "thorium",
-    ]
-    .iter()
-    .map(|d| cfg.join(d).join("Default/Bookmarks"))
-    .filter(|p| p.exists())
-    .collect()
-}
-
 fn read_firefox(db: &Path) -> Result<Vec<Bookmark>, String> {
-    // Firefox houdt de database open; werk op een kopie (inclusief WAL) om locks te vermijden.
     let tmp = std::env::temp_dir().join(format!("rust-launcher-places-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let copy = tmp.join("places.sqlite");
@@ -99,7 +129,12 @@ fn read_firefox(db: &Path) -> Result<Vec<Bookmark>, String> {
              FROM moz_bookmarks b JOIN moz_places p ON b.fk = p.id \
              WHERE b.type = 1 AND p.url LIKE 'http%'",
         )?;
-        let rows = stmt.query_map([], |r| Ok(Bookmark { title: r.get(0)?, url: r.get(1)? }))?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Bookmark {
+                title: r.get(0)?,
+                url: r.get(1)?,
+            })
+        })?;
         rows.collect()
     })();
     let _ = std::fs::remove_dir_all(&tmp);
@@ -122,8 +157,15 @@ fn walk(node: &serde_json::Value, out: &mut Vec<Bookmark>) {
     if node.get("type").and_then(|t| t.as_str()) == Some("url") {
         if let Some(url) = node.get("url").and_then(|u| u.as_str()) {
             if url.starts_with("http") {
-                let title = node.get("name").and_then(|n| n.as_str()).filter(|n| !n.is_empty()).unwrap_or(url);
-                out.push(Bookmark { title: title.to_string(), url: url.to_string() });
+                let title = node
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or(url);
+                out.push(Bookmark {
+                    title: title.to_string(),
+                    url: url.to_string(),
+                });
             }
         }
     }

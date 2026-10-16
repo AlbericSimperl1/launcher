@@ -86,9 +86,9 @@ pub fn split_cmd(s: &str) -> Vec<String> {
 }
 
 /// Start een proces los van de launcher en ruimt het zombie-proces later op.
-pub fn spawn(argv: &[String]) {
+pub fn spawn(argv: &[String]) -> bool {
     let Some((prog, args)) = argv.split_first() else {
-        return;
+        return false;
     };
     match Command::new(prog)
         .args(args)
@@ -101,8 +101,12 @@ pub fn spawn(argv: &[String]) {
             std::thread::spawn(move || {
                 let _ = child.wait();
             });
+            true
         }
-        Err(e) => tracing::warn!("kan '{prog}' niet starten: {e}"),
+        Err(e) => {
+            tracing::warn!("kan '{prog}' niet starten: {e}");
+            false
+        }
     }
 }
 
@@ -120,7 +124,9 @@ pub fn percent_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

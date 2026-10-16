@@ -1,7 +1,8 @@
 //! Root-state van de launcher: venster, event-afhandeling en koppeling tussen UI en modi.
 
 use crate::bookmarks::{self, Bookmark};
-use crate::config::Config;
+// use crate::config::Config;
+use crate::config::{self, Config};
 use crate::desktop::{self, DesktopApp};
 use crate::modes::files::{self, FileEntry};
 use crate::modes::{apps, browser, calc, ListRow, Mode, RowAction};
@@ -82,7 +83,7 @@ pub struct Launcher {
     card: gtk::Box,
     bar: Bar,
     results: Results,
-    cfg: Config,
+    cfg: RefCell<Rc<Config>>,
     rt: Handle,
     tx: UnboundedSender<Msg>,
     suppress: Cell<bool>,
@@ -186,13 +187,17 @@ impl Launcher {
                     calc_value: None,
                     calc_text: None,
                 }),
-                cfg,
+                cfg: RefCell::new(Rc::new(cfg)),
             }
         });
 
         launcher.connect_signals(root);
         launcher.reload_apps();
         launcher
+    }
+
+    fn cfg(&self) -> Rc<Config> {
+        self.cfg.borrow().clone()
     }
 
     fn connect_signals(self: &Rc<Self>, root: gtk::Box) {
@@ -252,8 +257,12 @@ impl Launcher {
             }
             ui.visible = true;
         }
+        *self.cfg.borrow_mut() = Rc::new(config::load());
+        self.ui.borrow_mut().show_hidden = self.cfg().files.show_hidden;
+        self.window.set_visible(true);
         self.window.present();
         self.bar.entry.grab_focus();
+        self.reload_apps();
     }
 
     pub fn hide(self: &Rc<Self>) {
@@ -282,7 +291,7 @@ impl Launcher {
             ui.rows.clear();
             ui.view_apps.clear();
             ui.files_cwd = ui.files_root.clone();
-            ui.show_hidden = self.cfg.files.show_hidden;
+            ui.show_hidden = self.cfg().files.show_hidden;
             ui.index_cache.clear();
             ui.indexing.clear();
             ui.file_gen += 1;
@@ -337,13 +346,16 @@ impl Launcher {
             return;
         }
         let text = self.bar.entry.text().to_string();
-        if let Some((mode, rest)) = bar::detect_flag(&text) {
-            self.suppress.set(true);
-            self.bar.entry.set_text(&rest);
-            self.bar.entry.set_position(0);
-            self.suppress.set(false);
-            self.choose_mode(mode);
-            return;
+        let explicit = self.ui.borrow().explicit;
+        if !explicit {
+            if let Some((mode, rest)) = bar::detect_flag(&text) {
+                self.suppress.set(true);
+                self.bar.entry.set_text(&rest);
+                self.bar.entry.set_position(0);
+                self.suppress.set(false);
+                self.choose_mode(mode);
+                return;
+            }
         }
         let new_mode = {
             let mut ui = self.ui.borrow_mut();
@@ -387,7 +399,7 @@ impl Launcher {
     fn reload_apps(&self) {
         let (tx, extra) = (
             self.tx.clone(),
-            self.cfg
+            self.cfg()
                 .apps
                 .extra_dirs
                 .iter()
@@ -411,14 +423,14 @@ impl Launcher {
         if pinned.is_empty() && rest.is_empty() {
             self.results.show_empty("Geen apps gevonden");
         } else {
-            let cols = self.cfg.apps.columns.max(1);
-            let tile_w = (self.cfg.appearance.width - 28 - 24) / cols as i32;
+            let cols = self.cfg().apps.columns.max(1);
+            let tile_w = (self.cfg().appearance.width - 28 - 24) / cols as i32;
             let (a, b) = (self.clone(), self.clone());
             self.results.grid.populate(
                 &pinned,
                 &rest,
                 cols,
-                self.cfg.apps.icon_size,
+                self.cfg().apps.icon_size,
                 tile_w,
                 selected,
                 Rc::new(move |i| a.activate_index(i)),
@@ -527,7 +539,7 @@ impl Launcher {
         self.bar.set_crumb(Some(&util::pretty_path(&cwd)));
         let query = text.trim();
         if query.is_empty() {
-            let entries = files::children(&cwd, hidden, &self.cfg.files.ignore);
+            let entries = files::children(&cwd, hidden, &self.cfg().files.ignore);
             self.set_file_rows(entries);
             return;
         }
@@ -539,7 +551,7 @@ impl Launcher {
                 let (tx, q, max) = (
                     self.tx.clone(),
                     query.to_string(),
-                    self.cfg.files.max_results,
+                    self.cfg().files.max_results,
                 );
                 self.rt.spawn_blocking(move || {
                     let entries = files::filter(&index, &q, max);
@@ -551,7 +563,7 @@ impl Launcher {
                 self.results.set_open(true);
                 let start = self.ui.borrow_mut().indexing.insert(key);
                 if start {
-                    let (tx, c) = (self.tx.clone(), self.cfg.files.clone());
+                    let (tx, c) = (self.tx.clone(), self.cfg().files.clone());
                     self.rt.spawn_blocking(move || {
                         let entries =
                             files::scan(&cwd, hidden, c.max_depth, &c.ignore, c.max_index);
@@ -654,7 +666,7 @@ impl Launcher {
             }
             ui.bookmarks_at = Some(Instant::now());
         }
-        let (tx, path) = (self.tx.clone(), self.cfg.browser.bookmarks_path.clone());
+        let (tx, path) = (self.tx.clone(), self.cfg().browser.bookmarks_path.clone());
         self.rt.spawn_blocking(move || {
             let _ = tx.send(Msg::Bookmarks(bookmarks::load(&path)));
         });
@@ -763,7 +775,7 @@ impl Launcher {
         if done {
             self.clear_entry();
             self.refresh(true);
-            if self.cfg.calc.close_on_copy {
+            if self.cfg().calc.close_on_copy {
                 self.hide();
             }
         }
@@ -818,20 +830,22 @@ impl Launcher {
         match row.action {
             RowAction::Path { path, is_dir } => {
                 match how {
-                    How::Primary if is_dir => files::open_in_manager(&self.cfg.files, &path, true),
-                    How::Primary => files::open_default(&path),
-                    How::Manager => files::open_in_manager(&self.cfg.files, &path, is_dir),
-                    How::Editor => files::open_in_editor(&self.cfg.files, &path),
+                    How::Primary if is_dir => {
+                        files::open_in_manager(&self.cfg().files, &path, true)
+                    }
+                    How::Primary => files::open_primary(&self.cfg().files, &path),
+                    How::Manager => files::open_in_manager(&self.cfg().files, &path, is_dir),
+                    How::Editor => files::open_in_editor(&self.cfg().files, &path),
                 }
                 self.hide();
             }
             RowAction::Url(url) => {
-                browser::open_url(&self.cfg.browser, &url);
+                browser::open_url(&self.cfg().browser, &url);
                 self.hide();
             }
             RowAction::Search(q) => {
-                let url = browser::search_url(&self.cfg.browser.search_url, &q);
-                browser::open_url(&self.cfg.browser, &url);
+                let url = browser::search_url(&self.cfg().browser.search_url, &q);
+                browser::open_url(&self.cfg().browser, &url);
                 self.hide();
             }
         }
@@ -858,7 +872,7 @@ impl Launcher {
             Some(Mode::Apps) => {
                 let new = {
                     let mut ui = self.ui.borrow_mut();
-                    let cols = self.cfg.apps.columns.max(1);
+                    let cols = self.cfg().apps.columns.max(1);
                     ui.selected =
                         grid::navigate(ui.selected, ui.view_apps.len(), ui.pinned_count, cols, dir);
                     ui.selected
