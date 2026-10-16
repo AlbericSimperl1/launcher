@@ -55,7 +55,6 @@ struct Ui {
     mode: Option<Mode>,
     explicit: bool,
     selected: usize,
-    anim_gen: u64,
 
     apps: Vec<DesktopApp>,
     view_apps: Vec<DesktopApp>,
@@ -171,7 +170,6 @@ impl Launcher {
                     mode: None,
                     explicit: false,
                     selected: 0,
-                    anim_gen: 0,
                     apps: Vec::new(),
                     view_apps: Vec::new(),
                     pinned_count: 0,
@@ -246,7 +244,6 @@ impl Launcher {
     pub fn show(self: &Rc<Self>) {
         {
             let mut ui = self.ui.borrow_mut();
-            ui.anim_gen += 1;
             if ui.visible {
                 drop(ui);
                 self.window.present();
@@ -255,36 +252,22 @@ impl Launcher {
             }
             ui.visible = true;
         }
-        self.card.remove_css_class("open");
         self.window.set_visible(true);
         self.window.present();
         self.bar.entry.grab_focus();
-        let card = self.card.clone();
-        glib::timeout_add_local_once(Duration::from_millis(20), move || {
-            card.add_css_class("open")
-        });
         self.reload_apps();
     }
 
     pub fn hide(self: &Rc<Self>) {
-        let gen = {
+        {
             let mut ui = self.ui.borrow_mut();
             if !ui.visible {
                 return;
             }
             ui.visible = false;
-            ui.anim_gen += 1;
-            ui.anim_gen
-        };
-        self.card.remove_css_class("open");
-        let me = self.clone();
-        let delay = self.cfg.appearance.animation_ms as u64 + 30;
-        glib::timeout_add_local_once(Duration::from_millis(delay), move || {
-            if me.ui.borrow().anim_gen == gen {
-                me.window.set_visible(false);
-                me.reset();
-            }
-        });
+        }
+        self.window.set_visible(false);
+        self.reset();
     }
 
     pub fn unhide_all(self: &Rc<Self>) {
@@ -836,6 +819,7 @@ impl Launcher {
         match row.action {
             RowAction::Path { path, is_dir } => {
                 match how {
+                    How::Primary if is_dir => files::open_in_manager(&self.cfg.files, &path, true),
                     How::Primary => files::open_default(&path),
                     How::Manager => files::open_in_manager(&self.cfg.files, &path, is_dir),
                     How::Editor => files::open_in_editor(&self.cfg.files, &path),
@@ -1019,7 +1003,22 @@ impl Launcher {
     }
 
     // ---------------------------------------------------------------- achtergrondberichten
-
+    pub fn prewarm(self: &Rc<Self>) {
+        if self.ui.borrow().visible {
+            return;
+        }
+        self.window.set_keyboard_mode(KeyboardMode::None);
+        self.window.set_opacity(0.0);
+        self.window.set_visible(true);
+        let me = self.clone();
+        glib::timeout_add_local_once(Duration::from_millis(250), move || {
+            if !me.ui.borrow().visible {
+                me.window.set_visible(false);
+            }
+            me.window.set_opacity(1.0);
+            me.window.set_keyboard_mode(KeyboardMode::Exclusive);
+        });
+    }
     fn handle(self: &Rc<Self>, msg: Msg) {
         match msg {
             Msg::Apps(list) => {

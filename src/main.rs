@@ -9,9 +9,9 @@ mod state;
 mod ui;
 mod util;
 
-use gtk4 as gtk;
 use gtk::prelude::*;
 use gtk::{gio, glib};
+use gtk4 as gtk;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::sync::mpsc;
@@ -59,19 +59,23 @@ fn main() -> glib::ExitCode {
         print!("{HELP}");
         return glib::ExitCode::SUCCESS;
     }
-    let _log_guard = util::init_logging();
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .thread_name("rl-worker")
-        .build()
-        .expect("tokio runtime");
-    let handle = runtime.handle().clone();
 
     let application = gtk::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
+    let _ = application.register(gio::Cancellable::NONE);
+    let primary = !application.is_remote();
+
+    let _log_guard = if primary { util::init_logging() } else { None };
+    let runtime = primary.then(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("rl-worker")
+            .build()
+            .expect("tokio runtime")
+    });
+    let handle = runtime.as_ref().map(|r| r.handle().clone());
 
     let launcher: Rc<RefCell<Option<Rc<app::Launcher>>>> = Rc::default();
 
@@ -88,7 +92,12 @@ fn main() -> glib::ExitCode {
             let mut slot = launcher.borrow_mut();
             if slot.is_none() {
                 let (tx, rx) = mpsc::unbounded_channel();
-                let l = app::Launcher::new(application, config::load(), handle.clone(), tx);
+                let l = app::Launcher::new(
+                    application,
+                    config::load(),
+                    handle.clone().expect("runtime"),
+                    tx,
+                );
                 l.spawn_receiver(rx);
                 std::mem::forget(application.hold());
                 tracing::info!("launcher gestart");
@@ -98,6 +107,8 @@ fn main() -> glib::ExitCode {
         };
 
         match cmd {
+            Cmd::Daemon => instance.prewarm(),
+            Cmd::Help => {}
             Cmd::Show => instance.show(),
             Cmd::Hide => instance.hide(),
             Cmd::Toggle => instance.toggle(),

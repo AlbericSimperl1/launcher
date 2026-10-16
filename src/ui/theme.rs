@@ -26,7 +26,7 @@ pub fn palette(dark: bool) -> Palette {
 pub fn resolve_dark(cfg: &Appearance) -> bool {
     match cfg.theme.as_str() {
         "dark" => true,
-        "light" => false,
+        "light" => true,
         _ => {
             let Some(settings) = gtk::Settings::default() else {
                 return true;
@@ -98,12 +98,7 @@ window.launcher * {{ font-family: "{font}", "SF Pro Display", "Inter", "Cantarel
   border-radius: {radius}px;
   padding: 14px;
   box-shadow: 0 28px 70px rgba(0, 0, 0, {shadow_a}), 0 6px 18px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  transform: scale(0.96);
-  transition: opacity {ms}ms ease-out, transform {ms}ms cubic-bezier(0.2, 0.9, 0.25, 1);
 }}
-.card.open {{ opacity: 1; transform: scale(1); }}
-
 .search-row {{ padding: 0 4px 0 6px; }}
 entry.search {{
   background: none; border: none; box-shadow: none; outline: none;
