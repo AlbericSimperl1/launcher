@@ -18,6 +18,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 dirs = "5.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
+gdk4-wayland = "0.9"
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-protocols = { version = "0.32.9", features = ["client", "staging"] }
 
 [profile.release]
 lto = "thin"

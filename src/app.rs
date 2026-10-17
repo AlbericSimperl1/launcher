@@ -1,5 +1,6 @@
 //! Root-state van de launcher: venster, event-afhandeling en koppeling tussen UI en modi.
 
+use crate::blur::Blur;
 use crate::bookmarks::{self, Bookmark};
 use crate::config::{self, Config};
 use crate::desktop::{self, DesktopApp};
@@ -90,6 +91,7 @@ pub struct Launcher {
     css: RefCell<Option<gtk::CssProvider>>,
     watcher: RefCell<Option<gtk::gio::FileMonitor>>,
     reload_pending: Cell<bool>,
+    blur: Option<Blur>,
 }
 
 impl Launcher {
@@ -150,6 +152,11 @@ impl Launcher {
             }
         };
 
+        let blur = if cfg.appearance.blur == "off" {
+            None
+        } else {
+            Blur::new()
+        };
         let launcher = Rc::new_cyclic(|weak: &std::rc::Weak<Launcher>| {
             let w = weak.clone();
             let bar = Bar::new(Rc::new(move |m| {
@@ -167,6 +174,7 @@ impl Launcher {
                 results,
                 rt,
                 tx,
+                blur,
                 suppress: Cell::new(false),
                 ui: RefCell::new(Ui {
                     visible: false,
@@ -195,11 +203,20 @@ impl Launcher {
                 reload_pending: Cell::new(false),
             }
         });
-
+        // launcher.apply_blur();
         launcher.connect_signals(root);
         launcher.watch_config();
         launcher.reload_apps();
         launcher
+    }
+
+    fn apply_blur(&self) {
+        let cfg = self.cfg();
+        if !theme::resolve_blur(&cfg.appearance) {
+            return;
+        }
+        let threshold = (cfg.appearance.opacity.clamp(0.0, 1.0) * 0.9).max(0.05);
+        util::hyprland_layer_blur("rust-launcher", threshold);
     }
 
     fn cfg(&self) -> Rc<Config> {
@@ -230,6 +247,28 @@ impl Launcher {
             }
         });
         root.add_controller(click);
+
+        if self.blur.is_some() {
+            let me = self.clone();
+            self.window.connect_map(move |w| {
+                if let Some(b) = &me.blur {
+                    b.attach(w);
+                }
+            });
+            let me = self.clone();
+            self.window.add_tick_callback(move |w, _| {
+                if let (Some(b), Some(r)) = (&me.blur, me.card.compute_bounds(w)) {
+                    b.update(
+                        r.x() as i32,
+                        r.y() as i32,
+                        r.width().ceil() as i32,
+                        r.height().ceil() as i32,
+                        me.cfg().appearance.radius as i32,
+                    );
+                }
+                glib::ControlFlow::Continue
+            });
+        }
     }
 
     pub fn spawn_receiver(self: &Rc<Self>, mut rx: UnboundedReceiver<Msg>) {
@@ -265,6 +304,7 @@ impl Launcher {
         }
         *self.cfg.borrow_mut() = Rc::new(config::load());
         self.ui.borrow_mut().show_hidden = self.cfg().files.show_hidden;
+        // self.apply_blur();
         self.window.set_visible(true);
         self.window.present();
         self.bar.entry.grab_focus();
@@ -392,6 +432,7 @@ impl Launcher {
         }
 
         self.card.set_width_request(cfg.appearance.width);
+        // self.apply_blur();
 
         {
             let mut ui = self.ui.borrow_mut();
@@ -1105,6 +1146,7 @@ impl Launcher {
     // ---------------------------------------------------------------- achtergrondberichten
 
     pub fn prewarm(self: &Rc<Self>) {
+        // self.apply_blur();
         if self.ui.borrow().visible {
             return;
         }

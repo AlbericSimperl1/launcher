@@ -32,7 +32,7 @@ impl Bar {
         let entry = gtk::Entry::new();
         entry.add_css_class("search");
         entry.set_hexpand(true);
-        entry.set_placeholder_text(Some("Find whatever..."));
+        entry.set_placeholder_text(Some("Find whatever you want..."));
         root.append(&entry);
 
         Self {

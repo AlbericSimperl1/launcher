@@ -134,6 +134,40 @@ pub fn percent_encode(s: &str) -> String {
 }
 
 /// Vraagt Hyprland of blur globaal aanstaat (None als hyprctl niet beschikbaar is).
+pub fn hyprland_layer_blur(namespace: &str, ignore_alpha: f64) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    static LAST_AT: AtomicU64 = AtomicU64::new(0);
+    static LAST_KEY: AtomicU64 = AtomicU64::new(0);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let key = ignore_alpha.to_bits();
+    let last = LAST_AT.load(Ordering::Relaxed);
+    if last != 0 && now.saturating_sub(last) < 300 && LAST_KEY.load(Ordering::Relaxed) == key {
+        return;
+    }
+    LAST_AT.store(now, Ordering::Relaxed);
+    LAST_KEY.store(key, Ordering::Relaxed);
+
+    let run = |rule: String| -> bool {
+        Command::new("hyprctl")
+            .args(["keyword", "layerrule", &rule])
+            .output()
+            .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "ok")
+            .unwrap_or(false)
+    };
+    if run(format!("blur on, match:namespace {namespace}")) {
+        run(format!(
+            "ignore_alpha {ignore_alpha:.2}, match:namespace {namespace}"
+        ));
+    } else {
+        run(format!("blur, {namespace}"));
+        run(format!("ignorealpha {ignore_alpha:.2}, {namespace}"));
+    }
+}
 pub fn hyprland_blur_enabled() -> Option<bool> {
     let out = Command::new("hyprctl")
         .args(["getoption", "decoration:blur:enabled", "-j"])
