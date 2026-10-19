@@ -2,8 +2,8 @@
 
 use crate::desktop::DesktopApp;
 use crate::ui::results::ensure_visible;
-use gtk4 as gtk;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -66,7 +66,11 @@ fn app_icon(icon: &str, size: i32) -> gtk::Image {
         let known = gtk::gdk::Display::default()
             .map(|d| gtk::IconTheme::for_display(&d).has_icon(icon))
             .unwrap_or(false);
-        gtk::Image::from_icon_name(if known { icon } else { "application-x-executable" })
+        gtk::Image::from_icon_name(if known {
+            icon
+        } else {
+            "application-x-executable"
+        })
     };
     img.set_pixel_size(size);
     img
@@ -97,8 +101,16 @@ impl Grid {
         scroll.set_propagate_natural_height(true);
         scroll.set_max_content_height(max_height);
         scroll.set_focusable(false);
+        scroll.set_overlay_scrolling(true);
 
-        Self { scroll, content, pinned, divider, rest, tiles: RefCell::new(Vec::new()) }
+        Self {
+            scroll,
+            content,
+            pinned,
+            divider,
+            rest,
+            tiles: RefCell::new(Vec::new()),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -148,9 +160,13 @@ impl Grid {
             }
         }
         self.pinned.set_visible(!pinned.is_empty());
-        self.divider.set_visible(!pinned.is_empty() && !rest.is_empty());
+        self.divider
+            .set_visible(!pinned.is_empty() && !rest.is_empty());
         self.rest.set_visible(!rest.is_empty());
         *self.tiles.borrow_mut() = tiles;
+        let (_, nat, _, _) = self.content.measure(gtk::Orientation::Vertical, -1);
+        self.scroll
+            .set_min_content_height(nat.min(self.scroll.max_content_height()));
         self.select(selected);
     }
 

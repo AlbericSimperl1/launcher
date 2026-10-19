@@ -22,8 +22,8 @@ fn app_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
         .unwrap_or_else(|_| util::home().join(".local/share"));
     dirs.push(data_home.join("applications"));
     dirs.extend(extra.iter().cloned());
-    let data_dirs = std::env::var("XDG_DATA_DIRS")
-        .unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let data_dirs =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     for d in data_dirs.split(':').filter(|d| !d.is_empty()) {
         dirs.push(Path::new(d).join("applications"));
     }
@@ -35,7 +35,8 @@ fn app_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
 
 fn parse(path: &Path, id: String) -> Option<DesktopApp> {
     let text = std::fs::read_to_string(path).ok()?;
-    let (mut name, mut icon, mut keywords, mut generic) = (None, String::new(), String::new(), String::new());
+    let (mut name, mut icon, mut keywords, mut generic) =
+        (None, String::new(), String::new(), String::new());
     let (mut typ, mut has_exec) = (String::new(), false);
     let (mut skip, mut only_show_in) = (false, String::new());
     let mut in_entry = false;
@@ -48,7 +49,9 @@ fn parse(path: &Path, id: String) -> Option<DesktopApp> {
         if !in_entry || line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         let v = v.trim();
         match k.trim() {
             "Name" => name = Some(v.to_string()),
@@ -87,7 +90,9 @@ pub fn load_apps(extra: &[PathBuf]) -> Vec<DesktopApp> {
     let mut seen = HashSet::new();
     let mut apps = Vec::new();
     for dir in app_dirs(extra) {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in rd.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
@@ -106,17 +111,32 @@ pub fn load_apps(extra: &[PathBuf]) -> Vec<DesktopApp> {
     apps
 }
 
+// src/desktop.rs — vervang launch()
 pub fn launch(app: &DesktopApp) {
+    let fallback = |reason: String| {
+        tracing::warn!("{}: {reason}; fallback via gio launch", app.name);
+        util::spawn(&[
+            "gio".into(),
+            "launch".into(),
+            app.path.to_string_lossy().into_owned(),
+        ]);
+    };
+
     let Some(info) = gio::DesktopAppInfo::from_filename(&app.path) else {
-        tracing::warn!("kan {} niet laden", app.path.display());
+        // o.a. TryExec niet gevonden in de PATH van de daemon
+        fallback(format!("kan {} niet laden", app.path.display()));
         return;
     };
+
     let ctx = gtk4::gdk::Display::default().map(|d| d.app_launch_context());
+    if let Some(c) = &ctx {
+        c.unsetenv("LD_PRELOAD");
+    }
     let res = match &ctx {
         Some(c) => info.launch(&[], Some(c)),
         None => info.launch(&[], gio::AppLaunchContext::NONE),
     };
     if let Err(e) = res {
-        tracing::warn!("start van {} mislukt: {e}", app.name);
+        fallback(format!("start mislukt: {e}"));
     }
 }

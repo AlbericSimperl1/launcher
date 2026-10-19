@@ -152,11 +152,10 @@ impl Launcher {
             }
         };
 
-        let blur = if cfg.appearance.blur == "off" {
-            None
-        } else {
-            Blur::new()
-        };
+        // src/app.rs — Launcher::new: dynamisch, met hyprctl-fallback als het protocol ontbreekt
+        let blur = if blur { Blur::new() } else { None };
+        tracing::info!("ext-background-effect: {}", blur.is_some());
+
         let launcher = Rc::new_cyclic(|weak: &std::rc::Weak<Launcher>| {
             let w = weak.clone();
             let bar = Bar::new(Rc::new(move |m| {
@@ -203,7 +202,7 @@ impl Launcher {
                 reload_pending: Cell::new(false),
             }
         });
-        // launcher.apply_blur();
+        launcher.apply_blur();
         launcher.connect_signals(root);
         launcher.watch_config();
         launcher.reload_apps();
@@ -248,26 +247,43 @@ impl Launcher {
         });
         root.add_controller(click);
 
+        // src/app.rs — connect_signals: vervang het hele `if self.blur.is_some() { ... }` blok
+        // Let op: géén connect_map-handler meer — sync() koppelt zelf aan de juiste surface.
+        // Twee effecten op dezelfde surface = protocolfout = verbroken Wayland-verbinding.
+        // src/app.rs — connect_signals: vervang het hele blur-blok
         if self.blur.is_some() {
             let me = self.clone();
-            self.window.connect_map(move |w| {
+            self.window.connect_unmap(move |_| {
                 if let Some(b) = &me.blur {
-                    b.attach(w);
+                    b.detach();
                 }
             });
             let me = self.clone();
             self.window.add_tick_callback(move |w, _| {
-                if let (Some(b), Some(r)) = (&me.blur, me.card.compute_bounds(w)) {
-                    b.update(
-                        r.x() as i32,
-                        r.y() as i32,
-                        r.width().ceil() as i32,
-                        r.height().ceil() as i32,
-                        me.cfg().appearance.radius as i32,
-                    );
+                if let Some(b) = &me.blur {
+                    if b.is_dead() {
+                        me.apply_blur();
+                        return glib::ControlFlow::Break;
+                    }
+                    if let Some(r) = me.card.compute_bounds(w) {
+                        let changed = b.sync(
+                            w,
+                            r.x() as i32,
+                            r.y() as i32,
+                            r.width().ceil() as i32,
+                            r.height().ceil() as i32,
+                            me.cfg().appearance.radius as i32,
+                        );
+                        if changed {
+                            // subsurface-positie wordt pas actief bij een commit van het venster
+                            w.queue_draw();
+                        }
+                    }
                 }
                 glib::ControlFlow::Continue
             });
+        } else {
+            self.apply_blur();
         }
     }
 
@@ -304,7 +320,7 @@ impl Launcher {
         }
         *self.cfg.borrow_mut() = Rc::new(config::load());
         self.ui.borrow_mut().show_hidden = self.cfg().files.show_hidden;
-        // self.apply_blur();
+        self.apply_blur();
         self.window.set_visible(true);
         self.window.present();
         self.bar.entry.grab_focus();
@@ -401,7 +417,7 @@ impl Launcher {
             return;
         }
         let me = self.clone();
-        glib::timeout_add_local_once(Duration::from_millis(250), move || {
+        glib::timeout_add_local_once(Duration::from_millis(400), move || {
             me.reload_pending.set(false);
             me.reload();
         });
@@ -432,7 +448,7 @@ impl Launcher {
         }
 
         self.card.set_width_request(cfg.appearance.width);
-        // self.apply_blur();
+        self.apply_blur();
 
         {
             let mut ui = self.ui.borrow_mut();
@@ -1146,7 +1162,7 @@ impl Launcher {
     // ---------------------------------------------------------------- achtergrondberichten
 
     pub fn prewarm(self: &Rc<Self>) {
-        // self.apply_blur();
+        self.apply_blur();
         if self.ui.borrow().visible {
             return;
         }

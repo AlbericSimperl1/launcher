@@ -58,11 +58,59 @@ fn parse(args: &[String]) -> Cmd {
     Cmd::Toggle
 }
 
+use std::os::unix::process::CommandExt;
+
+fn ensure_layer_shell_preload() {
+    if std::env::var_os("RL_PRELOADED").is_some() {
+        return;
+    }
+    let candidates = [
+        "/usr/lib/libgtk4-layer-shell.so",
+        "/usr/lib64/libgtk4-layer-shell.so",
+        "/usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so",
+        "/usr/local/lib/libgtk4-layer-shell.so",
+    ];
+    let Some(lib) = candidates.iter().find(|p| std::path::Path::new(p).exists()) else {
+        return;
+    };
+    let preload = match std::env::var("LD_PRELOAD") {
+        Ok(old) if !old.is_empty() => format!("{lib}:{old}"),
+        _ => lib.to_string(),
+    };
+    let err = std::process::Command::new(std::env::current_exe().expect("exe"))
+        .args(std::env::args().skip(1))
+        .env("LD_PRELOAD", preload)
+        .env("RL_PRELOADED", "1")
+        .exec();
+    eprintln!("re-exec mislukt: {err}");
+}
+
+// src/main.rs — begin of main(), vóór GTK/tokio threads
 fn main() -> glib::ExitCode {
+    // src/main.rs — in main(), direct na `fn main() -> glib::ExitCode {`
+    glib::log_set_handler(
+        Some("Gdk"),
+        glib::LogLevels::LEVEL_WARNING,
+        false,
+        false,
+        |domain, level, msg| {
+            // Onschadelijke GTK4-melding bij snel tonen/verbergen van het venster
+            if msg.contains("gdk_frame_timings_throttling_hint") {
+                return;
+            }
+            glib::log_default_handler(domain, level, Some(msg));
+        },
+    );
+    std::env::remove_var("LD_PRELOAD");
+    if std::env::var_os("XDG_CURRENT_DESKTOP").is_none() {
+        std::env::set_var("XDG_CURRENT_DESKTOP", "Hyprland");
+    }
+
     if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
         print!("{HELP}");
         return glib::ExitCode::SUCCESS;
     }
+    // ... rest ongewijzigd
 
     let application = gtk::Application::builder()
         .application_id(APP_ID)

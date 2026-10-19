@@ -86,12 +86,17 @@ pub fn split_cmd(s: &str) -> Vec<String> {
 }
 
 /// Start een proces los van de launcher en ruimt het zombie-proces later op.
+// src/util.rs — vervang spawn()
+use std::os::unix::process::CommandExt;
+
 pub fn spawn(argv: &[String]) -> bool {
     let Some((prog, args)) = argv.split_first() else {
         return false;
     };
     match Command::new(prog)
         .args(args)
+        .env_remove("LD_PRELOAD")
+        .process_group(0) // los van de launcher, overleeft herstart van de daemon
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -168,13 +173,21 @@ pub fn hyprland_layer_blur(namespace: &str, ignore_alpha: f64) {
         run(format!("ignorealpha {ignore_alpha:.2}, {namespace}"));
     }
 }
+
 pub fn hyprland_blur_enabled() -> Option<bool> {
     let out = Command::new("hyprctl")
         .args(["getoption", "decoration:blur:enabled", "-j"])
         .output()
         .ok()?;
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
-    v.get("int").and_then(|x| x.as_i64()).map(|i| i != 0)
+    ["int", "bool", "value", "data"]
+        .iter()
+        .find_map(|k| match v.get(*k)? {
+            serde_json::Value::Bool(b) => Some(*b),
+            serde_json::Value::Number(n) => n.as_i64().map(|i| i != 0),
+            serde_json::Value::String(s) => Some(matches!(s.trim(), "1" | "true" | "on" | "yes")),
+            _ => None,
+        })
 }
 
 /// Fuzzy matcher rond nucleo (hergebruikt buffers tussen aanroepen).

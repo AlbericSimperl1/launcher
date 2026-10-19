@@ -58,6 +58,8 @@ impl Results {
         list_scroll.set_propagate_natural_height(true);
         list_scroll.set_max_content_height(max_height);
         list_scroll.set_focusable(false);
+        list_scroll.set_overlay_scrolling(true);
+
         stack.add_named(&list_scroll, Some("list"));
 
         let grid = Grid::new(max_height);
@@ -191,6 +193,9 @@ impl Results {
             self.list_box.append(&r);
             widgets.push(r);
         }
+        let (_, nat, _, _) = self.list_box.measure(gtk::Orientation::Vertical, -1);
+        self.list_scroll
+            .set_min_content_height(nat.min(self.list_scroll.max_content_height()));
         *self.rows.borrow_mut() = widgets;
         self.stack.set_visible_child_name("list");
         self.select_row(selected);

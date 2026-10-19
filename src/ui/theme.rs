@@ -26,7 +26,7 @@ pub fn palette(dark: bool) -> Palette {
 pub fn resolve_dark(cfg: &Appearance) -> bool {
     match cfg.theme.as_str() {
         "dark" => true,
-        "light" => true,
+        "light" => false,
         _ => {
             let Some(settings) = gtk::Settings::default() else {
                 return true;
@@ -43,7 +43,8 @@ pub fn resolve_blur(cfg: &Appearance) -> bool {
     match cfg.blur.as_str() {
         "on" | "true" => true,
         "off" | "false" => false,
-        _ => util::hyprland_blur_enabled().unwrap_or(false),
+        _ => util::hyprland_blur_enabled()
+            .unwrap_or_else(|| std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()),
     }
 }
 
@@ -145,7 +146,8 @@ popover.ctx-menu button {{
 }}
 popover.ctx-menu button:hover {{ background: {sel}; }}
 scrolledwindow undershoot, scrolledwindow overshoot {{ background: none; }}
-scrollbar slider {{ background: {chip_hover}; border-radius: 4px; min-width: 5px; }}
+scrollbar, scrollbar trough {{ background: none; border: none; box-shadow: none; padding: 0; margin: 0 2px; min-width: 4px; }}
+scrollbar slider, scrollbar.vertical slider, scrollbar.vertical:hover slider {{ background: {chip_hover}; border: none; border-radius: 4px; min-width: 3px; min-height: 28px; margin: 0; }}
 "#
     )
 }
