@@ -2,13 +2,15 @@
 
 [appearance]
 theme = "auto"            # "auto" | "dark" | "light"
-blur = "on"             # "auto" (vraagt Hyprland) | "on" | "off"
+blur = "auto"           # "auto" (aan onder Hyprland) | "on" | "off"
+blur_radius = 0           # blur-straal zolang de launcher open is (0 = Hyprlands decoration:blur:size)
+blur_passes = 0           # blur-passes, hoger = gladder/zwaarder (0 = Hyprlands decoration:blur:passes)
 font = "Mononoki Nerd Font Mono"            # valt terug op SF Pro Display / Cantarell / sans-serif
 accent = "#0a84ff"
 radius = 22               # afgeronde hoeken in px (minimaal 16)
 width = 560               # breedte van de kaart in px
 top_margin = 140          # afstand tot de bovenkant van het scherm in px
-opacity = 0.55            # achtergronddekking mét blur
+opacity = 0.55            # achtergronddekking mét blur (lager = meer blur zichtbaar)
 fallback_opacity = 0.93   # achtergronddekking zónder blur
 animation_ms = 160        # duur van fade/scale-animaties
 max_height = 440          # maximale hoogte van het resultatengebied in px

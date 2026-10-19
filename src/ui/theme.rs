@@ -1,7 +1,6 @@
 //! Thema en CSS-generatie (frosted glass, afgeronde hoeken, zachte schaduw).
 
 use crate::config::Appearance;
-use crate::util;
 use gtk4 as gtk;
 
 pub struct Palette {
@@ -39,12 +38,13 @@ pub fn resolve_dark(cfg: &Appearance) -> bool {
     }
 }
 
+/// Blur gaat via CSS `backdrop-filter`: GTK zet dat zelf om naar ext-background-effect,
+/// waarna de compositor (Hyprland) het gebied achter de kaart blurt.
 pub fn resolve_blur(cfg: &Appearance) -> bool {
     match cfg.blur.as_str() {
         "on" | "true" => true,
         "off" | "false" => false,
-        _ => util::hyprland_blur_enabled()
-            .unwrap_or_else(|| std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()),
+        _ => std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
     }
 }
 
@@ -86,6 +86,7 @@ pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
     let font = &cfg.font;
     let accent = &cfg.accent;
     let shadow_a = if dark { 0.45 } else { 0.22 };
+    let backdrop = if blur { "backdrop-filter: blur(24px);" } else { "" };
 
     format!(
         r#"
@@ -94,6 +95,7 @@ window.launcher * {{ font-family: "{font}", "SF Pro Display", "Inter", "Cantarel
 
 .card {{
   background-color: {bg};
+  {backdrop}
   color: {fg};
   border: 1px solid {border};
   border-radius: {radius}px;

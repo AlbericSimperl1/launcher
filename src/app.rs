@@ -1,6 +1,5 @@
 //! Root-state van de launcher: venster, event-afhandeling en koppeling tussen UI en modi.
 
-use crate::blur::Blur;
 use crate::bookmarks::{self, Bookmark};
 use crate::config::{self, Config};
 use crate::desktop::{self, DesktopApp};
@@ -91,7 +90,8 @@ pub struct Launcher {
     css: RefCell<Option<gtk::CssProvider>>,
     watcher: RefCell<Option<gtk::gio::FileMonitor>>,
     reload_pending: Cell<bool>,
-    blur: Option<Blur>,
+    /// Hyprlands eigen (size, passes), bewaard zolang wij de blur-sterkte overschrijven.
+    saved_blur: Cell<Option<(i64, i64)>>,
 }
 
 impl Launcher {
@@ -152,10 +152,6 @@ impl Launcher {
             }
         };
 
-        // src/app.rs — Launcher::new: dynamisch, met hyprctl-fallback als het protocol ontbreekt
-        let blur = if blur { Blur::new() } else { None };
-        tracing::info!("ext-background-effect: {}", blur.is_some());
-
         let launcher = Rc::new_cyclic(|weak: &std::rc::Weak<Launcher>| {
             let w = weak.clone();
             let bar = Bar::new(Rc::new(move |m| {
@@ -173,7 +169,6 @@ impl Launcher {
                 results,
                 rt,
                 tx,
-                blur,
                 suppress: Cell::new(false),
                 ui: RefCell::new(Ui {
                     visible: false,
@@ -200,22 +195,38 @@ impl Launcher {
                 css: RefCell::new(Some(provider)),
                 watcher: RefCell::new(None),
                 reload_pending: Cell::new(false),
+                saved_blur: Cell::new(None),
             }
         });
-        launcher.apply_blur();
         launcher.connect_signals(root);
         launcher.watch_config();
         launcher.reload_apps();
         launcher
     }
 
-    fn apply_blur(&self) {
+    /// Hyprland kent geen blur-sterkte per layer: zolang de launcher open is zetten we de
+    /// globale `decoration:blur` op onze waarden, en bij sluiten weer terug.
+    fn apply_blur_strength(&self) {
         let cfg = self.cfg();
-        if !theme::resolve_blur(&cfg.appearance) {
+        let a = &cfg.appearance;
+        if !theme::resolve_blur(a) || (a.blur_radius == 0 && a.blur_passes == 0) {
+            self.restore_blur_strength();
             return;
         }
-        let threshold = (cfg.appearance.opacity.clamp(0.0, 1.0) * 0.9).max(0.05);
-        util::hyprland_layer_blur("rust-launcher", threshold);
+        if self.saved_blur.get().is_none() {
+            self.saved_blur.set(util::hypr_blur_get());
+        }
+        let Some((size, passes)) = self.saved_blur.get() else {
+            return;
+        };
+        let pick = |v: u32, orig: i64| if v > 0 { v as i64 } else { orig };
+        util::hypr_blur_set(pick(a.blur_radius, size), pick(a.blur_passes, passes));
+    }
+
+    fn restore_blur_strength(&self) {
+        if let Some((size, passes)) = self.saved_blur.take() {
+            util::hypr_blur_set(size, passes);
+        }
     }
 
     fn cfg(&self) -> Rc<Config> {
@@ -246,45 +257,6 @@ impl Launcher {
             }
         });
         root.add_controller(click);
-
-        // src/app.rs — connect_signals: vervang het hele `if self.blur.is_some() { ... }` blok
-        // Let op: géén connect_map-handler meer — sync() koppelt zelf aan de juiste surface.
-        // Twee effecten op dezelfde surface = protocolfout = verbroken Wayland-verbinding.
-        // src/app.rs — connect_signals: vervang het hele blur-blok
-        if self.blur.is_some() {
-            let me = self.clone();
-            self.window.connect_unmap(move |_| {
-                if let Some(b) = &me.blur {
-                    b.detach();
-                }
-            });
-            let me = self.clone();
-            self.window.add_tick_callback(move |w, _| {
-                if let Some(b) = &me.blur {
-                    if b.is_dead() {
-                        me.apply_blur();
-                        return glib::ControlFlow::Break;
-                    }
-                    if let Some(r) = me.card.compute_bounds(w) {
-                        let changed = b.sync(
-                            w,
-                            r.x() as i32,
-                            r.y() as i32,
-                            r.width().ceil() as i32,
-                            r.height().ceil() as i32,
-                            me.cfg().appearance.radius as i32,
-                        );
-                        if changed {
-                            // subsurface-positie wordt pas actief bij een commit van het venster
-                            w.queue_draw();
-                        }
-                    }
-                }
-                glib::ControlFlow::Continue
-            });
-        } else {
-            self.apply_blur();
-        }
     }
 
     pub fn spawn_receiver(self: &Rc<Self>, mut rx: UnboundedReceiver<Msg>) {
@@ -320,7 +292,7 @@ impl Launcher {
         }
         *self.cfg.borrow_mut() = Rc::new(config::load());
         self.ui.borrow_mut().show_hidden = self.cfg().files.show_hidden;
-        self.apply_blur();
+        self.apply_blur_strength();
         self.window.set_visible(true);
         self.window.present();
         self.bar.entry.grab_focus();
@@ -336,6 +308,7 @@ impl Launcher {
             ui.visible = false;
         }
         self.window.set_visible(false);
+        self.restore_blur_strength();
         self.reset();
         self.reload_apps();
     }
@@ -398,8 +371,12 @@ impl Launcher {
         ) {
             Ok(m) => {
                 let me = self.clone();
-                m.connect_changed(move |_, file, _, _| {
-                    if file.basename().as_deref() == Some(Path::new("config.toml")) {
+                // Atomisch opslaan (tmp-bestand + rename) meldt config.toml als `other`.
+                m.connect_changed(move |_, file, other, _| {
+                    let is_cfg = |f: &gtk::gio::File| {
+                        f.basename().as_deref() == Some(Path::new("config.toml"))
+                    };
+                    if is_cfg(file) || other.is_some_and(is_cfg) {
                         me.schedule_reload();
                     }
                 });
@@ -448,7 +425,9 @@ impl Launcher {
         }
 
         self.card.set_width_request(cfg.appearance.width);
-        self.apply_blur();
+        if self.ui.borrow().visible {
+            self.apply_blur_strength();
+        }
 
         {
             let mut ui = self.ui.borrow_mut();
@@ -1162,7 +1141,6 @@ impl Launcher {
     // ---------------------------------------------------------------- achtergrondberichten
 
     pub fn prewarm(self: &Rc<Self>) {
-        self.apply_blur();
         if self.ui.borrow().visible {
             return;
         }

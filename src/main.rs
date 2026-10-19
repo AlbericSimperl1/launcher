@@ -1,7 +1,6 @@
 //! Entrypoint: GTK-applicatie met single-instance gedrag (daemon + toggle via D-Bus).
 
 mod app;
-mod blur;
 mod bookmarks;
 mod config;
 mod desktop;

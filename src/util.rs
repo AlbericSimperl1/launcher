@@ -138,56 +138,38 @@ pub fn percent_encode(s: &str) -> String {
     out
 }
 
-/// Vraagt Hyprland of blur globaal aanstaat (None als hyprctl niet beschikbaar is).
-pub fn hyprland_layer_blur(namespace: &str, ignore_alpha: f64) {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    static LAST_AT: AtomicU64 = AtomicU64::new(0);
-    static LAST_KEY: AtomicU64 = AtomicU64::new(0);
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let key = ignore_alpha.to_bits();
-    let last = LAST_AT.load(Ordering::Relaxed);
-    if last != 0 && now.saturating_sub(last) < 300 && LAST_KEY.load(Ordering::Relaxed) == key {
-        return;
-    }
-    LAST_AT.store(now, Ordering::Relaxed);
-    LAST_KEY.store(key, Ordering::Relaxed);
-
-    let run = |rule: String| -> bool {
-        Command::new("hyprctl")
-            .args(["keyword", "layerrule", &rule])
-            .output()
-            .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "ok")
-            .unwrap_or(false)
-    };
-    if run(format!("blur on, match:namespace {namespace}")) {
-        run(format!(
-            "ignore_alpha {ignore_alpha:.2}, match:namespace {namespace}"
-        ));
-    } else {
-        run(format!("blur, {namespace}"));
-        run(format!("ignorealpha {ignore_alpha:.2}, {namespace}"));
-    }
+/// Eén commando naar Hyprlands IPC-socket (wat `hyprctl` doet, zonder een proces te starten).
+fn hypr_ipc(cmd: &str) -> Option<String> {
+    use std::io::{Read, Write};
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+    let sig = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
+    let path = Path::new(&dir).join("hypr").join(sig).join(".socket.sock");
+    let mut sock = std::os::unix::net::UnixStream::connect(path).ok()?;
+    sock.set_read_timeout(Some(std::time::Duration::from_millis(300)))
+        .ok()?;
+    sock.write_all(cmd.as_bytes()).ok()?;
+    let mut out = String::new();
+    sock.read_to_string(&mut out).ok()?;
+    Some(out)
 }
 
-pub fn hyprland_blur_enabled() -> Option<bool> {
-    let out = Command::new("hyprctl")
-        .args(["getoption", "decoration:blur:enabled", "-j"])
-        .output()
-        .ok()?;
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
-    ["int", "bool", "value", "data"]
-        .iter()
-        .find_map(|k| match v.get(*k)? {
-            serde_json::Value::Bool(b) => Some(*b),
-            serde_json::Value::Number(n) => n.as_i64().map(|i| i != 0),
-            serde_json::Value::String(s) => Some(matches!(s.trim(), "1" | "true" | "on" | "yes")),
-            _ => None,
-        })
+/// Huidige blur-instelling van Hyprland als (size, passes).
+pub fn hypr_blur_get() -> Option<(i64, i64)> {
+    let get = |opt: &str| -> Option<i64> {
+        let out = hypr_ipc(&format!("j/getoption decoration:blur:{opt}"))?;
+        serde_json::from_str::<serde_json::Value>(&out).ok()?.get("int")?.as_i64()
+    };
+    Some((get("size")?, get("passes")?))
+}
+
+pub fn hypr_blur_set(size: i64, passes: i64) {
+    let cmd = format!(
+        "eval hl.config({{ decoration = {{ blur = {{ size = {size}, passes = {passes} }} }} }})"
+    );
+    let out = hypr_ipc(&cmd);
+    if out.as_deref().map(str::trim) != Some("ok") {
+        tracing::warn!("blur instellen mislukt: {out:?}");
+    }
 }
 
 /// Fuzzy matcher rond nucleo (hergebruikt buffers tussen aanroepen).

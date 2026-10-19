@@ -18,8 +18,12 @@ pub struct Config {
 pub struct Appearance {
     /// "auto" | "dark" | "light"
     pub theme: String,
-    /// "auto" (vraagt Hyprland) | "on" | "off"
+    /// "auto" (aan onder Hyprland) | "on" | "off"
     pub blur: String,
+    /// Blur-straal (Hyprland `decoration:blur:size`) zolang de launcher open is; 0 = Hyprlands waarde.
+    pub blur_radius: u32,
+    /// Blur-passes (Hyprland `decoration:blur:passes`) zolang de launcher open is; 0 = Hyprlands waarde.
+    pub blur_passes: u32,
     pub font: String,
     pub accent: String,
     pub radius: u32,
@@ -38,6 +42,8 @@ impl Default for Appearance {
         Self {
             theme: "auto".into(),
             blur: "auto".into(),
+            blur_radius: 0,
+            blur_passes: 0,
             font: "Inter".into(),
             accent: "#0a84ff".into(),
             radius: 6,

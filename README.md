@@ -1,7 +1,7 @@
 # rust-launcher
 
 Apple-achtige launcher voor **CachyOS + Hyprland (Wayland)**, 100% Rust: `gtk4` + `gtk4-layer-shell`,
-`tokio` voor achtergrondtaken, `nucleo` voor fuzzy matching. Frosted glass via Hyprland-blur,
+`tokio` voor achtergrondtaken, `nucleo` voor fuzzy matching. Frosted glass via ext-background-effect (Hyprland-blur),
 afgeronde hoeken, zachte schaduw en fade/scale-animaties.
 
 ## Architectuur
@@ -43,23 +43,26 @@ bind = SUPER, space, exec, rust-launcher
 
 Gebruik je Noctalia's eigen launcher-binding op `Super+Space`? Verwijder of wijzig die dan.
 
-Blur + layerrules (namespace is `rust-launcher`):
+Blur vraagt de launcher zelf aan: de kaart heeft CSS `backdrop-filter: blur()`, GTK (>= 4.24) zet dat om
+naar het `ext-background-effect`-protocol en Hyprland blurt precies het gebied achter de kaart (met afgeronde
+hoeken). Je hebt dus **geen** `blur`/`ignore_alpha`-layerrule nodig; zet die juist niet aan, anders blurt
+Hyprland het hele overlay. Alleen animatie uitzetten is handig (namespace is `rust-launcher`):
 
-```ini
-# Hyprland >= 0.53
-layerrule = blur on, match:namespace rust-launcher
-layerrule = ignore_alpha 0.3, match:namespace rust-launcher
-layerrule = no_anim on, match:namespace rust-launcher
-
-# Hyprland < 0.53
-# layerrule = blur, rust-launcher
-# layerrule = ignorealpha 0.3, rust-launcher
-# layerrule = noanim, rust-launcher
+```lua
+hl.layer_rule({
+    match = { namespace = "rust-launcher" },
+    no_anim = true
+})
 ```
 
-`ignorealpha` zorgt dat alleen de kaart (niet de transparante rest van het scherm-overlay) geblurd wordt.
-Zorg dat `decoration { blur { enabled = true } }` aanstaat. Met `blur = "auto"` detecteert de launcher dit
-via `hyprctl` en gebruikt anders `fallback_opacity` (donkere, vrijwel dichte achtergrond).
+Zorg dat `decoration.blur.enabled = true` aanstaat. `blur = "off"` vraagt geen blur aan en gebruikt
+`fallback_opacity`.
+
+De blur-**sterkte** regel je met `blur_radius` en `blur_passes` in `config.toml` (0 = Hyprlands eigen
+`decoration.blur.size`/`passes`). Hyprland kent geen blur-sterkte per layer, dus de launcher zet die globale
+waarden via de Hyprland-socket zolang hij open is en zet ze bij sluiten terug. Crasht de launcher terwijl hij
+open is, dan blijft zijn waarde staan tot je Hyprland herlaadt. Met `opacity` regel je hoeveel van de blur
+door de kaart heen zichtbaar is.
 
 ## Gebruik
 
