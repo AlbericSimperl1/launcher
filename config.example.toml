@@ -14,6 +14,9 @@ opacity = 0.55            # achtergronddekking mét blur (lager = meer blur zich
 fallback_opacity = 0.93   # achtergronddekking zónder blur
 animation_ms = 160        # duur van fade/scale-animaties
 max_height = 440          # maximale hoogte van het resultatengebied in px
+border_width = 1          # randdikte van de kaart in px
+placement = "center"      # "center" | "sidebar" | "hover" (muis tegen linkerrand = sidebar, keybind = center)
+sidebar_width = 440       # breedte van de sidebar in px (hoogte = schermhoogte)
 
 [files]
 start_dir = "~"
@@ -35,6 +38,12 @@ bookmarks_path = ""       # leeg = automatisch (Firefox/LibreWolf/Zen places.sql
 columns = 6
 icon_size = 32
 extra_dirs = []           # extra mappen met .desktop-bestanden
+layout = "grid"           # "grid" | "list"
 
 [calc]
 close_on_copy = false     # sluit de launcher na Enter (kopiëren)
+
+[wallpaper]
+dir = "~/Pictures/wallpapers"  # submappen zijn thema's
+command = "awww img"           # pad wordt achteraan toegevoegd; bv. "awww img --transition-type grow"
+columns = 3

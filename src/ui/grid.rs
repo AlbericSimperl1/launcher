@@ -15,14 +15,22 @@ pub enum Dir {
     Right,
 }
 
-/// Berekent de nieuwe selectie in een platte lijst die uit twee secties bestaat
-/// (`pinned` items, daarna de rest), elk met `cols` kolommen.
-pub fn navigate(i: usize, n: usize, pinned: usize, cols: usize, dir: Dir) -> usize {
+/// Berekent de nieuwe selectie in een platte lijst die uit opeenvolgende secties bestaat
+/// (`sections` = lengte per sectie, bv. pinned + rest), elk met `cols` kolommen.
+pub fn navigate(i: usize, sections: &[usize], cols: usize, dir: Dir) -> usize {
+    let mut bounds = Vec::new();
+    let mut start = 0;
+    for &len in sections.iter().filter(|&&l| l > 0) {
+        bounds.push((start, start + len));
+        start += len;
+    }
+    let n = start;
     if n == 0 || cols == 0 {
         return 0;
     }
     let i = i.min(n - 1);
-    let (start, end) = if i < pinned { (0, pinned) } else { (pinned, n) };
+    let k = bounds.iter().position(|&(_, e)| i < e).unwrap_or(0);
+    let (start, end) = bounds[k];
     let (row, col) = ((i - start) / cols, (i - start) % cols);
     match dir {
         Dir::Left => i.saturating_sub(1),
@@ -32,8 +40,8 @@ pub fn navigate(i: usize, n: usize, pinned: usize, cols: usize, dir: Dir) -> usi
                 i + cols
             } else if (end - 1 - start) / cols > row {
                 end - 1
-            } else if i < pinned && pinned < n {
-                (pinned + col).min(n - 1)
+            } else if let Some(&(s, e)) = bounds.get(k + 1) {
+                (s + col).min(e - 1)
             } else {
                 i
             }
@@ -41,12 +49,32 @@ pub fn navigate(i: usize, n: usize, pinned: usize, cols: usize, dir: Dir) -> usi
         Dir::Up => {
             if row > 0 {
                 i - cols
-            } else if i >= pinned && pinned > 0 {
-                (((pinned - 1) / cols) * cols + col).min(pinned - 1)
+            } else if k > 0 {
+                let (s, e) = bounds[k - 1];
+                (s + ((e - 1 - s) / cols) * cols + col).min(e - 1)
             } else {
                 i
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sections() {
+        // secties van 2, 0 (leeg), 5 en 1 item(s), 3 kolommen
+        let s = [2, 0, 5, 1];
+        assert_eq!(navigate(0, &s, 3, Dir::Down), 2);
+        assert_eq!(navigate(1, &s, 3, Dir::Down), 3);
+        assert_eq!(navigate(3, &s, 3, Dir::Down), 6);
+        assert_eq!(navigate(6, &s, 3, Dir::Down), 7);
+        assert_eq!(navigate(7, &s, 3, Dir::Up), 5);
+        assert_eq!(navigate(4, &s, 3, Dir::Up), 1);
+        assert_eq!(navigate(2, &s, 3, Dir::Up), 0);
+        assert_eq!(navigate(7, &s, 3, Dir::Down), 7);
     }
 }
 
@@ -74,6 +102,38 @@ fn app_icon(icon: &str, size: i32) -> gtk::Image {
     };
     img.set_pixel_size(size);
     img
+}
+
+fn grid_tile(app: &DesktopApp, icon_size: i32, tile_w: i32) -> gtk::Box {
+    let tile = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    tile.add_css_class("tile");
+    tile.append(&app_icon(&app.icon, icon_size));
+    let label = gtk::Label::new(Some(&app.name));
+    label.add_css_class("name");
+    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    label.set_max_width_chars(((tile_w / 8).max(8)) as i32);
+    label.set_justify(gtk::Justification::Center);
+    tile.append(&label);
+    tile
+}
+
+fn list_tile(app: &DesktopApp, icon_size: i32) -> gtk::Box {
+    let tile = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+    tile.add_css_class("tile");
+    tile.add_css_class("list");
+    tile.append(&app_icon(&app.icon, icon_size));
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    text.set_valign(gtk::Align::Center);
+    text.set_hexpand(true);
+    for (s, class) in [(&app.name, "name"), (&app.exec, "exec")] {
+        let l = gtk::Label::new(Some(s));
+        l.add_css_class(class);
+        l.set_xalign(0.0);
+        l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        text.append(&l);
+    }
+    tile.append(&text);
+    tile
 }
 
 impl Grid {
@@ -124,6 +184,7 @@ impl Grid {
         selected: usize,
         on_click: Rc<dyn Fn(usize)>,
         on_context: Rc<dyn Fn(usize, &gtk::Widget, f64, f64)>,
+        list: bool,
     ) {
         for g in [&self.pinned, &self.rest] {
             while let Some(c) = g.first_child() {
@@ -134,17 +195,13 @@ impl Grid {
         for (section, apps) in [(&self.pinned, pinned), (&self.rest, rest)] {
             for (i, app) in apps.iter().enumerate() {
                 let idx = tiles.len();
-                let tile = gtk::Box::new(gtk::Orientation::Vertical, 6);
-                tile.add_css_class("tile");
+                let tile = if list {
+                    list_tile(app, icon_size)
+                } else {
+                    grid_tile(app, icon_size, tile_w)
+                };
                 tile.set_size_request(tile_w, -1);
                 tile.set_tooltip_text(Some(&app.name));
-                tile.append(&app_icon(&app.icon, icon_size));
-                let label = gtk::Label::new(Some(&app.name));
-                label.add_css_class("name");
-                label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-                label.set_max_width_chars(((tile_w / 8).max(8)) as i32);
-                label.set_justify(gtk::Justification::Center);
-                tile.append(&label);
 
                 let click = gtk::GestureClick::builder().button(0).build();
                 let (cb, ctx, widget) = (on_click.clone(), on_context.clone(), tile.clone());

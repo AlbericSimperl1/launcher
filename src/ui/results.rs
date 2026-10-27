@@ -121,6 +121,15 @@ impl Results {
         }
     }
 
+    /// Sidebar: resultaten vullen de kaart tot onderaan; center: begrensd op `max_height`.
+    pub fn set_fill(&self, fill: bool, max_height: i32) {
+        self.revealer.set_vexpand(fill);
+        for s in [&self.list_scroll, &self.grid.scroll] {
+            s.set_vexpand(fill);
+            s.set_max_content_height(if fill { -1 } else { max_height });
+        }
+    }
+
     pub fn show_grid(&self) {
         self.stack.set_visible_child_name("grid");
     }

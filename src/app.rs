@@ -75,6 +75,11 @@ struct Ui {
 
     calc_value: Option<f64>,
     calc_text: Option<String>,
+
+    /// Kaart staat links op volle hoogte; idle-modus is dan Apps (volledige lijst).
+    sidebar: bool,
+    /// Geopend door de muis tegen de linkerrand: sluit weer als de muis de kaart verlaat.
+    by_hover: bool,
 }
 
 pub struct Launcher {
@@ -92,6 +97,10 @@ pub struct Launcher {
     reload_pending: Cell<bool>,
     /// Hyprlands eigen (size, passes), bewaard zolang wij de blur-sterkte overschrijven.
     saved_blur: Cell<Option<(i64, i64)>>,
+    /// Onzichtbare strook tegen de linkerrand (placement = "hover").
+    edge: RefCell<Option<gtk::ApplicationWindow>>,
+    leave_timer: RefCell<Option<glib::SourceId>>,
+    menu_open: Cell<bool>,
 }
 
 impl Launcher {
@@ -190,16 +199,22 @@ impl Launcher {
                     bookmarks_at: None,
                     calc_value: None,
                     calc_text: None,
+                    sidebar: false,
+                    by_hover: false,
                 }),
                 cfg: RefCell::new(Rc::new(cfg)),
                 css: RefCell::new(Some(provider)),
                 watcher: RefCell::new(None),
                 reload_pending: Cell::new(false),
                 saved_blur: Cell::new(None),
+                edge: RefCell::new(None),
+                leave_timer: RefCell::new(None),
+                menu_open: Cell::new(false),
             }
         });
         launcher.connect_signals(root);
         launcher.watch_config();
+        launcher.update_edge();
         launcher.reload_apps();
         launcher
     }
@@ -257,6 +272,87 @@ impl Launcher {
             }
         });
         root.add_controller(click);
+
+        // Via hover geopend: sluiten zodra de muis de kaart verlaat (met korte vertraging).
+        let motion = gtk::EventControllerMotion::new();
+        let me = self.clone();
+        motion.connect_enter(move |_, _, _| me.cancel_leave());
+        let me = self.clone();
+        motion.connect_leave(move |_| {
+            if !me.ui.borrow().by_hover || me.menu_open.get() {
+                return;
+            }
+            me.cancel_leave();
+            let me2 = me.clone();
+            let id = glib::timeout_add_local_once(Duration::from_millis(250), move || {
+                me2.leave_timer.borrow_mut().take();
+                me2.hide();
+            });
+            *me.leave_timer.borrow_mut() = Some(id);
+        });
+        self.card.add_controller(motion);
+    }
+
+    fn cancel_leave(&self) {
+        if let Some(id) = self.leave_timer.borrow_mut().take() {
+            id.remove();
+        }
+    }
+
+    /// Maakt of verwijdert de hover-strook tegen de linkerrand, afhankelijk van `placement`.
+    fn update_edge(self: &Rc<Self>) {
+        let want = self.cfg().appearance.placement == "hover";
+        let mut edge = self.edge.borrow_mut();
+        if !want {
+            if let Some(w) = edge.take() {
+                w.destroy();
+            }
+            return;
+        }
+        if edge.is_some() {
+            return;
+        }
+        let w = gtk::ApplicationWindow::builder().decorated(false).build();
+        if let Some(app) = self.window.application() {
+            w.set_application(Some(&app));
+        }
+        w.add_css_class("edge");
+        w.init_layer_shell();
+        w.set_namespace("rust-launcher-edge");
+        w.set_layer(Layer::Top);
+        w.set_keyboard_mode(KeyboardMode::None);
+        w.set_exclusive_zone(0);
+        for e in [Edge::Left, Edge::Top, Edge::Bottom] {
+            w.set_anchor(e, true);
+        }
+        w.set_size_request(2, -1);
+        w.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+        let motion = gtk::EventControllerMotion::new();
+        let me = self.clone();
+        motion.connect_enter(move |_, _, _| me.show_as(true));
+        w.add_controller(motion);
+        w.present();
+        *edge = Some(w);
+    }
+
+    /// Positie en grootte van de kaart: center (`width`, begrensde hoogte) of sidebar
+    /// (`sidebar_width` × schermhoogte, links).
+    fn apply_placement(&self) {
+        let cfg = self.cfg();
+        let a = &cfg.appearance;
+        let sidebar = self.ui.borrow().sidebar;
+        let (width, align, valign, margin) = if sidebar {
+            (a.sidebar_width, gtk::Align::Start, gtk::Align::Fill, 8)
+        } else {
+            (a.width, gtk::Align::Center, gtk::Align::Center, 0)
+        };
+        self.card.set_width_request(width);
+        self.card.set_halign(align);
+        self.card.set_valign(valign);
+        self.card.set_margin_top(margin);
+        self.card.set_margin_bottom(margin);
+        self.card.set_margin_start(margin);
+        self.results.set_fill(sidebar, a.max_height);
     }
 
     pub fn spawn_receiver(self: &Rc<Self>, mut rx: UnboundedReceiver<Msg>) {
@@ -280,6 +376,11 @@ impl Launcher {
     }
 
     pub fn show(self: &Rc<Self>) {
+        self.show_as(false);
+    }
+
+    /// `hover`: geopend via de linkerrand, altijd als sidebar.
+    fn show_as(self: &Rc<Self>, hover: bool) {
         {
             let mut ui = self.ui.borrow_mut();
             if ui.visible {
@@ -291,7 +392,17 @@ impl Launcher {
             ui.visible = true;
         }
         *self.cfg.borrow_mut() = Rc::new(config::load());
-        self.ui.borrow_mut().show_hidden = self.cfg().files.show_hidden;
+        let sidebar = hover || self.cfg().appearance.placement == "sidebar";
+        {
+            let mut ui = self.ui.borrow_mut();
+            ui.show_hidden = self.cfg().files.show_hidden;
+            ui.sidebar = sidebar;
+            ui.by_hover = hover;
+            ui.mode = sidebar.then_some(Mode::Apps);
+        }
+        self.apply_placement();
+        self.bar.set_mode(self.ui.borrow().mode);
+        self.refresh(true);
         self.apply_blur_strength();
         self.window.set_visible(true);
         self.window.present();
@@ -306,7 +417,9 @@ impl Launcher {
                 return;
             }
             ui.visible = false;
+            ui.by_hover = false;
         }
+        self.cancel_leave();
         self.window.set_visible(false);
         self.restore_blur_strength();
         self.reset();
@@ -320,7 +433,7 @@ impl Launcher {
     fn reset(self: &Rc<Self>) {
         {
             let mut ui = self.ui.borrow_mut();
-            ui.mode = None;
+            ui.mode = ui.sidebar.then_some(Mode::Apps);
             ui.explicit = false;
             ui.selected = 0;
             ui.rows.clear();
@@ -341,9 +454,9 @@ impl Launcher {
     }
 
     fn back_to_general(self: &Rc<Self>) {
-        {
+        let mode = {
             let mut ui = self.ui.borrow_mut();
-            ui.mode = None;
+            ui.mode = ui.sidebar.then_some(Mode::Apps);
             ui.explicit = false;
             ui.selected = 0;
             ui.rows.clear();
@@ -351,11 +464,12 @@ impl Launcher {
             ui.file_gen += 1;
             ui.calc_value = None;
             ui.calc_text = None;
-        }
+            ui.mode
+        };
         self.clear_entry();
-        self.bar.set_mode(None);
+        self.bar.set_mode(mode);
         self.bar.set_crumb(None);
-        self.results.set_open(false);
+        self.refresh(true);
         self.bar.entry.grab_focus_without_selecting();
     }
 
@@ -424,7 +538,8 @@ impl Launcher {
             *self.css.borrow_mut() = Some(provider);
         }
 
-        self.card.set_width_request(cfg.appearance.width);
+        self.apply_placement();
+        self.update_edge();
         if self.ui.borrow().visible {
             self.apply_blur_strength();
         }
@@ -485,7 +600,8 @@ impl Launcher {
             let before = ui.mode;
             if ui.mode.is_none() && !text.is_empty() {
                 ui.mode = Some(Mode::Apps);
-            } else if ui.mode == Some(Mode::Apps) && text.is_empty() && !ui.explicit {
+            } else if ui.mode == Some(Mode::Apps) && text.is_empty() && !ui.explicit && !ui.sidebar
+            {
                 ui.mode = None;
             }
             (before != ui.mode).then_some(ui.mode)
@@ -546,8 +662,8 @@ impl Launcher {
         if pinned.is_empty() && rest.is_empty() {
             self.results.show_empty("Geen apps gevonden");
         } else {
-            let cols = self.cfg().apps.columns.max(1);
-            let tile_w = (self.cfg().appearance.width - 28 - 24) / cols as i32;
+            let cols = self.app_columns();
+            let tile_w = (self.card.width_request() - 28 - 24) / cols as i32;
             let (a, b) = (self.clone(), self.clone());
             self.results.grid.populate(
                 &pinned,
@@ -558,10 +674,19 @@ impl Launcher {
                 selected,
                 Rc::new(move |i| a.activate_index(i)),
                 Rc::new(move |i, w, x, y| b.show_app_menu(i, w, x, y)),
+                self.cfg().apps.layout == "list",
             );
             self.results.show_grid();
         }
         self.results.set_open(true);
+    }
+
+    fn app_columns(&self) -> usize {
+        if self.cfg().apps.layout == "list" {
+            1
+        } else {
+            self.cfg().apps.columns.max(1)
+        }
     }
 
     fn show_app_menu(self: &Rc<Self>, idx: usize, widget: &gtk::Widget, x: f64, y: f64) {
@@ -612,10 +737,12 @@ impl Launcher {
         pop.set_child(Some(&menu));
         let me = self.clone();
         pop.connect_closed(move |p| {
+            me.menu_open.set(false);
             let p = p.clone();
             me.bar.entry.grab_focus_without_selecting();
             glib::idle_add_local_once(move || p.unparent());
         });
+        self.menu_open.set(true);
         pop.popup();
     }
 
@@ -995,9 +1122,9 @@ impl Launcher {
             Some(Mode::Apps) => {
                 let new = {
                     let mut ui = self.ui.borrow_mut();
-                    let cols = self.cfg().apps.columns.max(1);
-                    ui.selected =
-                        grid::navigate(ui.selected, ui.view_apps.len(), ui.pinned_count, cols, dir);
+                    let cols = self.app_columns();
+                    let sections = [ui.pinned_count, ui.view_apps.len() - ui.pinned_count];
+                    ui.selected = grid::navigate(ui.selected, &sections, cols, dir);
                     ui.selected
                 };
                 self.results.grid.select(new);

@@ -81,6 +81,7 @@ pub fn css(cfg: &Appearance, dark: bool, blur: bool) -> String {
     };
     let (fg, dim) = (p.fg, p.dim);
     let radius = cfg.radius;
+    let bw = cfg.border_width;
     let inner = (radius as f64 * 0.6).round() as u32;
     // let ms = cfg.animation_ms;
     let font = &cfg.font;
@@ -97,7 +98,7 @@ window.launcher * {{ font-family: "{font}", "SF Pro Display", "Inter", "Cantarel
   background-color: {bg};
   {backdrop}
   color: {fg};
-  border: 1px solid {border};
+  border: {bw}px solid {border};
   border-radius: {radius}px;
   padding: 14px;
   box-shadow: 0 28px 70px rgba(0, 0, 0, {shadow_a}), 0 6px 18px rgba(0, 0, 0, 0.18);
@@ -130,6 +131,16 @@ button.mode.active {{ background: {accent}; }}
 .tile {{ padding: 8px 2px 6px 2px; border-radius: {inner}px; transition: background 120ms ease; }}
 .tile.selected {{ background: {sel}; }}
 .tile .name {{ font-size: 11px; }}
+.tile.list {{ padding: 8px 12px; }}
+.tile.list .name {{ font-size: 14px; font-weight: 500; }}
+.tile.list .exec {{ font-size: 11px; color: {dim}; }}
+.section-title {{ color: {dim}; font-size: 12px; font-weight: 600; margin: 10px 6px 4px 6px; }}
+.section-title:first-child {{ margin-top: 2px; }}
+.wall {{ padding: 4px; border-radius: {inner}px; transition: background 120ms ease; }}
+.wall.selected {{ background: {accent}; }}
+.wall picture {{ border-radius: {inner}px; }}
+.wall .name {{ font-size: 11px; color: {dim}; }}
+window.edge {{ background: transparent; }}
 
 .empty {{ color: {dim}; font-size: 13px; padding: 20px 0; }}
 .calc-result {{ font-size: 36px; font-weight: 200; }}

@@ -12,6 +12,8 @@ pub struct DesktopApp {
     pub name: String,
     pub icon: String,
     pub keywords: String,
+    /// Exec-regel zonder veldcodes (%U, %f, ...), als subtitel in list-mode.
+    pub exec: String,
     pub path: PathBuf,
 }
 
@@ -37,7 +39,7 @@ fn parse(path: &Path, id: String) -> Option<DesktopApp> {
     let text = std::fs::read_to_string(path).ok()?;
     let (mut name, mut icon, mut keywords, mut generic) =
         (None, String::new(), String::new(), String::new());
-    let (mut typ, mut has_exec) = (String::new(), false);
+    let (mut typ, mut exec) = (String::new(), None);
     let (mut skip, mut only_show_in) = (false, String::new());
     let mut in_entry = false;
     for line in text.lines() {
@@ -59,13 +61,13 @@ fn parse(path: &Path, id: String) -> Option<DesktopApp> {
             "Icon" => icon = v.to_string(),
             "Keywords" => keywords = v.replace(';', " "),
             "Type" => typ = v.to_string(),
-            "Exec" => has_exec = true,
+            "Exec" if exec.is_none() => exec = Some(strip_field_codes(v)),
             "NoDisplay" | "Hidden" | "Terminal" if v.eq_ignore_ascii_case("true") => skip = true,
             "OnlyShowIn" => only_show_in = v.to_string(),
             _ => {}
         }
     }
-    if skip || !has_exec || typ != "Application" {
+    if skip || exec.is_none() || typ != "Application" {
         return None;
     }
     if !only_show_in.is_empty() {
@@ -82,8 +84,16 @@ fn parse(path: &Path, id: String) -> Option<DesktopApp> {
         name: name?,
         icon,
         keywords: format!("{generic} {keywords}"),
+        exec: exec.unwrap_or_default(),
         path: path.to_path_buf(),
     })
+}
+
+fn strip_field_codes(exec: &str) -> String {
+    exec.split_whitespace()
+        .filter(|w| !(w.len() == 2 && w.starts_with('%')))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn load_apps(extra: &[PathBuf]) -> Vec<DesktopApp> {

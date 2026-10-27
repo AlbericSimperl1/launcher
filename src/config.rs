@@ -11,6 +11,7 @@ pub struct Config {
     pub browser: Browser,
     pub apps: Apps,
     pub calc: Calc,
+    pub wallpaper: Wallpaper,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -35,6 +36,10 @@ pub struct Appearance {
     pub fallback_opacity: f64,
     pub animation_ms: u32,
     pub max_height: i32,
+    pub border_width: u32,
+    /// "center" | "sidebar" | "hover" (muis tegen linkerrand = sidebar, keybind = center)
+    pub placement: String,
+    pub sidebar_width: i32,
 }
 
 impl Default for Appearance {
@@ -53,6 +58,9 @@ impl Default for Appearance {
             fallback_opacity: 0.93,
             animation_ms: 160,
             max_height: 360,
+            border_width: 1,
+            placement: "center".into(),
+            sidebar_width: 440,
         }
     }
 }
@@ -127,6 +135,8 @@ pub struct Apps {
     pub columns: usize,
     pub icon_size: i32,
     pub extra_dirs: Vec<String>,
+    /// "grid" | "list"
+    pub layout: String,
 }
 
 impl Default for Apps {
@@ -135,6 +145,7 @@ impl Default for Apps {
             columns: 6,
             icon_size: 40,
             extra_dirs: Vec::new(),
+            layout: "grid".into(),
         }
     }
 }
@@ -143,6 +154,26 @@ impl Default for Apps {
 #[serde(default)]
 pub struct Calc {
     pub close_on_copy: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct Wallpaper {
+    /// Map met wallpapers; submappen zijn thema's.
+    pub dir: String,
+    /// Het pad van de afbeelding wordt achteraan toegevoegd.
+    pub command: String,
+    pub columns: usize,
+}
+
+impl Default for Wallpaper {
+    fn default() -> Self {
+        Self {
+            dir: "~/Pictures/wallpapers".into(),
+            command: "awww img".into(),
+            columns: 3,
+        }
+    }
 }
 
 pub fn load() -> Config {
