@@ -95,7 +95,12 @@ opent de centered versie). `[apps] layout = "list"` toont apps als lijst met ico
 | Apps | `Enter`/klik start · rechtermuisknop: pin/verberg · `Ctrl+P` pin |
 | Wallpapers | pijltjes door de thema's · `Enter` zetten + sluiten · `Ctrl+Enter` zetten en open blijven · typ een thema om te filteren |
 
-CLI: `--daemon`, `--show`, `--hide`, `--toggle`, `--unhide-all` (verborgen apps terugzetten).
+CLI: `--daemon`, `--show`, `--hide`, `--toggle`, `--unhide-all` (verborgen apps terugzetten), `--settings`.
+
+## Settings
+
+Zoek **Launcher Settings** in de apps (of `rust-launcher --settings`). Elke wijziging wordt direct in
+`config.toml` geschreven (commentaar blijft staan) en live toegepast. `Esc` gaat terug.
 
 ## Bestanden
 

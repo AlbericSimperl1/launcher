@@ -28,6 +28,8 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 const MAX_BOOKMARK_ROWS: usize = 1000;
+/// Synthetische app in de apps-lijst die het settingspanel opent.
+const SETTINGS_ID: &str = "rust-launcher-settings";
 
 /// Berichten van achtergrondtaken (tokio) naar de GTK-mainloop.
 pub enum Msg {
@@ -444,6 +446,12 @@ impl Launcher {
         self.reload_apps();
     }
 
+    pub fn open_settings(self: &Rc<Self>) {
+        self.show();
+        self.clear_entry();
+        self.choose_mode(Mode::Settings);
+    }
+
     pub fn unhide_all(self: &Rc<Self>) {
         self.ui.borrow_mut().state.unhide_all();
     }
@@ -596,6 +604,12 @@ impl Launcher {
         if mode == Mode::Wallpaper {
             self.scan_walls();
         }
+        if mode == Mode::Settings {
+            self.results.settings.build(&self.cfg());
+            self.refresh(true);
+            self.results.settings.focus_first();
+            return;
+        }
         self.bar.entry.grab_focus_without_selecting();
         self.refresh(true);
     }
@@ -652,6 +666,12 @@ impl Launcher {
             Some(Mode::Calc) => self.refresh_calc(&text),
             Some(Mode::Browser) => self.refresh_browser(&text),
             Some(Mode::Wallpaper) => self.refresh_walls(&text),
+            // Niet herbouwen: reload() na elke wijziging zou anders de focus wegnemen.
+            Some(Mode::Settings) => {
+                self.bar.set_crumb(None);
+                self.results.show_settings();
+                self.results.set_open(true);
+            }
         }
     }
 
@@ -668,7 +688,17 @@ impl Launcher {
                 .collect::<Vec<_>>(),
         );
         self.rt.spawn_blocking(move || {
-            let _ = tx.send(Msg::Apps(desktop::load_apps(&extra)));
+            let mut apps = desktop::load_apps(&extra);
+            apps.push(DesktopApp {
+                id: SETTINGS_ID.into(),
+                name: "Launcher Settings".into(),
+                icon: "preferences-system".into(),
+                keywords: "settings instellingen config launcher".into(),
+                exec: "rust-launcher --settings".into(),
+                path: PathBuf::new(),
+            });
+            apps.sort_by_key(|a| a.name.to_lowercase());
+            let _ = tx.send(Msg::Apps(apps));
         });
     }
 
@@ -1158,7 +1188,10 @@ impl Launcher {
         match mode {
             Some(Mode::Apps) => {
                 let app = self.ui.borrow().view_apps.get(selected).cloned();
-                if let Some(app) = app {
+                if app.as_ref().is_some_and(|a| a.id == SETTINGS_ID) {
+                    self.clear_entry();
+                    self.choose_mode(Mode::Settings);
+                } else if let Some(app) = app {
                     desktop::launch(&app);
                     self.hide();
                 }
@@ -1177,7 +1210,7 @@ impl Launcher {
                     self.calc_copy();
                 }
             }
-            None => {}
+            Some(Mode::Settings) | None => {}
         }
     }
 
@@ -1271,6 +1304,15 @@ impl Launcher {
         let shift = state.contains(ModifierType::SHIFT_MASK);
         let mode = self.ui.borrow().mode;
         let stop = glib::Propagation::Stop;
+
+        // Formulier: Tab/pijlen/Enter horen bij de widgets, alleen Esc gaat terug.
+        if mode == Some(Mode::Settings) {
+            if keyval == Key::Escape {
+                self.back_to_general();
+                return stop;
+            }
+            return glib::Propagation::Proceed;
+        }
 
         match keyval {
             Key::Escape => {

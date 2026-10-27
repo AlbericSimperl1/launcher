@@ -131,6 +131,11 @@ button.mode.active {{ background: {accent}; }}
 .tile {{ padding: 8px 2px 6px 2px; border-radius: {inner}px; transition: background 120ms ease; }}
 .tile.selected {{ background: {sel}; }}
 .tile .name {{ font-size: 11px; }}
+.setting {{ padding: 3px 6px; min-height: 34px; }}
+.settings entry, .settings spinbutton, .settings dropdown > button {{
+  background: {chip}; color: {fg}; border: none; box-shadow: none; border-radius: {inner}px;
+}}
+.settings switch:checked {{ background: {accent}; }}
 .tile.list {{ padding: 8px 12px; }}
 .tile.list .name {{ font-size: 14px; font-weight: 500; }}
 .tile.list .exec {{ font-size: 11px; color: {dim}; }}

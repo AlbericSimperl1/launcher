@@ -27,6 +27,7 @@ Gebruik: rust-launcher [OPTIE]
   --hide         verberg de launcher
   --toggle       toon of verberg de launcher
   --unhide-all   maak alle verborgen apps weer zichtbaar
+  --settings     open het settingspanel
   --help, -h     toon deze hulp
 ";
 
@@ -38,6 +39,7 @@ enum Cmd {
     Toggle,
     UnhideAll,
     Reload,
+    Settings,
     Help,
 }
 
@@ -48,7 +50,8 @@ fn parse(args: &[String]) -> Cmd {
             "--show" => return Cmd::Show,
             "--hide" => return Cmd::Hide,
             "--unhide-all" => return Cmd::UnhideAll,
-            "--reload" => return Cmd::Reload, // ← nieuw
+            "--reload" => return Cmd::Reload,
+            "--settings" => return Cmd::Settings,
 
             "--help" | "-h" => return Cmd::Help,
             _ => {}
@@ -163,6 +166,7 @@ fn main() -> glib::ExitCode {
             Cmd::Show => instance.show(),
             Cmd::Hide => instance.hide(),
             Cmd::Reload => instance.reload(),
+            Cmd::Settings => instance.open_settings(),
 
             Cmd::Toggle => instance.toggle(),
             Cmd::UnhideAll => instance.unhide_all(),

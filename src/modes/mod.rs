@@ -15,6 +15,7 @@ pub enum Mode {
     Calc,
     Browser,
     Wallpaper,
+    Settings,
 }
 
 impl Mode {
@@ -38,6 +39,7 @@ impl Mode {
             Mode::Calc => "calculator",
             Mode::Browser => "globe",
             Mode::Wallpaper => "image",
+            Mode::Settings => "layout-grid",
         }
     }
 
@@ -48,6 +50,7 @@ impl Mode {
             Mode::Calc => "Calculator  (c)",
             Mode::Browser => "Browser  (b)",
             Mode::Wallpaper => "Wallpapers  (w)",
+            Mode::Settings => "Settings",
         }
     }
 
@@ -58,6 +61,7 @@ impl Mode {
             Mode::Calc => "Calculate...",
             Mode::Browser => "Browse the web or bookmarks...",
             Mode::Wallpaper => "Find a wallpaper...",
+            Mode::Settings => "Launcher settings  ·  Esc = terug",
         }
     }
 }

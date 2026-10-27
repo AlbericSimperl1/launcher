@@ -176,6 +176,52 @@ impl Default for Wallpaper {
     }
 }
 
+/// Zet één waarde in config.toml; commentaar en opmaak van de rest blijven behouden.
+/// Een onleesbaar bestand wordt niet overschreven.
+pub fn set(section: &str, key: &str, value: impl Into<toml_edit::Value>) -> std::io::Result<()> {
+    let path = util::config_dir().join("config.toml");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let new = set_in(&text, section, key, value.into())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::create_dir_all(util::config_dir())?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, new)?;
+    std::fs::rename(&tmp, &path)
+}
+
+fn set_in(
+    text: &str,
+    section: &str,
+    key: &str,
+    mut value: toml_edit::Value,
+) -> Result<String, toml_edit::TomlError> {
+    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    if !doc.contains_key(section) {
+        doc[section] = toml_edit::table();
+    }
+    let item = &mut doc[section][key];
+    if let Some(old) = item.as_value() {
+        *value.decor_mut() = old.decor().clone();
+    }
+    *item = toml_edit::Item::Value(value);
+    Ok(doc.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_keeps_comments() {
+        let text = "# kop\n[appearance]\nwidth = 560 # breedte\n";
+        let out = set_in(text, "appearance", "width", 600.into()).unwrap();
+        assert_eq!(out, "# kop\n[appearance]\nwidth = 600 # breedte\n");
+        let out = set_in(&out, "wallpaper", "dir", "~/w".into()).unwrap();
+        assert!(out.contains("[wallpaper]\ndir = \"~/w\""), "{out}");
+        assert!(set_in("[[kapot", "a", "b", 1.into()).is_err());
+    }
+}
+
 pub fn load() -> Config {
     let path = util::config_dir().join("config.toml");
     match std::fs::read_to_string(&path) {

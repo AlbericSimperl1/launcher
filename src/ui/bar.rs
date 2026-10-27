@@ -59,6 +59,7 @@ impl Bar {
             }
             None => self.lead.set_visible(false),
         }
+        self.entry.set_sensitive(mode != Some(Mode::Settings));
         let placeholder = mode.map_or("Find whatever...", |m| m.placeholder());
         self.entry.set_placeholder_text(Some(placeholder));
         if mode != Some(Mode::Files) {
