@@ -48,6 +48,7 @@ impl Bar {
             Some(Mode::Files) => Some("search"),
             Some(Mode::Browser) => Some("globe"),
             Some(Mode::Calc) => Some("plus"),
+            Some(Mode::Wallpaper) => Some("image"),
             _ => None,
         };
         match lead_icon {
@@ -76,7 +77,7 @@ impl Bar {
     }
 }
 
-/// Herkent `f `, `c ` of `b ` aan het begin van de invoer. Geeft de modus en de resterende tekst.
+/// Herkent `f `, `c `, `b ` of `w ` aan het begin van de invoer. Geeft de modus en de resterende tekst.
 pub fn detect_flag(text: &str) -> Option<(Mode, String)> {
     let mut it = text.chars();
     let flag = it.next()?;

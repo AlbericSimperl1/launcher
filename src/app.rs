@@ -4,6 +4,7 @@ use crate::bookmarks::{self, Bookmark};
 use crate::config::{self, Config};
 use crate::desktop::{self, DesktopApp};
 use crate::modes::files::{self, FileEntry};
+use crate::modes::wallpaper::{self, Section, Wall};
 use crate::modes::{apps, browser, calc, ListRow, Mode, RowAction};
 use crate::state::State;
 use crate::ui::bar::{self, Bar};
@@ -12,7 +13,7 @@ use crate::ui::results::{CalcView, Results};
 use crate::ui::{icons, theme};
 use crate::util::{self, Fuzzy};
 
-use gtk::gdk::{Key, ModifierType};
+use gtk::gdk::{self, Key, ModifierType};
 use gtk::glib;
 use gtk::prelude::*;
 use gtk4 as gtk;
@@ -40,6 +41,11 @@ pub enum Msg {
     FileResults {
         gen: u64,
         entries: Vec<FileEntry>,
+    },
+    Walls(Vec<Section>),
+    Thumb {
+        path: PathBuf,
+        tex: gdk::Texture,
     },
 }
 
@@ -75,6 +81,13 @@ struct Ui {
 
     calc_value: Option<f64>,
     calc_text: Option<String>,
+
+    walls: Option<Vec<Section>>,
+    /// Gefilterde wallpapers in weergavevolgorde, plus de lengte per thema-sectie.
+    view_walls: Vec<Wall>,
+    wall_sections: Vec<usize>,
+    thumbs: HashMap<PathBuf, gdk::Texture>,
+    thumbs_loading: HashSet<PathBuf>,
 
     /// Kaart staat links op volle hoogte; idle-modus is dan Apps (volledige lijst).
     sidebar: bool,
@@ -199,6 +212,11 @@ impl Launcher {
                     bookmarks_at: None,
                     calc_value: None,
                     calc_text: None,
+                    walls: None,
+                    view_walls: Vec::new(),
+                    wall_sections: Vec::new(),
+                    thumbs: HashMap::new(),
+                    thumbs_loading: HashSet::new(),
                     sidebar: false,
                     by_hover: false,
                 }),
@@ -575,6 +593,9 @@ impl Launcher {
         if mode == Mode::Browser {
             self.ensure_bookmarks();
         }
+        if mode == Mode::Wallpaper {
+            self.scan_walls();
+        }
         self.bar.entry.grab_focus_without_selecting();
         self.refresh(true);
     }
@@ -630,6 +651,7 @@ impl Launcher {
             Some(Mode::Files) => self.refresh_files(&text),
             Some(Mode::Calc) => self.refresh_calc(&text),
             Some(Mode::Browser) => self.refresh_browser(&text),
+            Some(Mode::Wallpaper) => self.refresh_walls(&text),
         }
     }
 
@@ -972,6 +994,88 @@ impl Launcher {
         self.set_rows(rows);
     }
 
+    // ---------------------------------------------------------------- wallpapers
+
+    /// Herscant bij elke keer openen van de w-modus; de thumbnail-cache blijft bewaard.
+    fn scan_walls(&self) {
+        let (tx, dir) = (self.tx.clone(), util::expand_tilde(&self.cfg().wallpaper.dir));
+        self.rt.spawn_blocking(move || {
+            let _ = tx.send(Msg::Walls(wallpaper::scan(&dir)));
+        });
+    }
+
+    fn refresh_walls(self: &Rc<Self>, text: &str) {
+        self.bar.set_crumb(None);
+        let cols = self.cfg().wallpaper.columns.max(1);
+        let tile_w = (self.card.width_request() - 28 - 24) / cols as i32;
+        let (sections, selected, missing) = {
+            let mut ui = self.ui.borrow_mut();
+            let Some(all) = ui.walls.as_ref() else {
+                drop(ui);
+                self.results.show_empty("Laden…");
+                self.results.set_open(true);
+                return;
+            };
+            let sections = wallpaper::filter(all, text);
+            ui.view_walls = sections.iter().flat_map(|(_, w)| w.iter().cloned()).collect();
+            ui.wall_sections = sections.iter().map(|(_, w)| w.len()).collect();
+            ui.selected = ui.selected.min(ui.view_walls.len().saturating_sub(1));
+            let missing: Vec<PathBuf> = ui
+                .view_walls
+                .iter()
+                .map(|w| w.path.clone())
+                .filter(|p| !ui.thumbs.contains_key(p) && !ui.thumbs_loading.contains(p))
+                .collect();
+            ui.thumbs_loading.extend(missing.iter().cloned());
+            (sections, ui.selected, missing)
+        };
+        if sections.is_empty() {
+            let dir = self.cfg().wallpaper.dir.clone();
+            self.results.show_empty(&format!("Geen wallpapers in {dir}"));
+        } else {
+            let me = self.clone();
+            self.results.walls.populate(
+                &sections,
+                cols,
+                tile_w,
+                selected,
+                &self.ui.borrow().thumbs,
+                Rc::new(move |i| me.activate_index(i)),
+            );
+            self.results.show_walls();
+        }
+        self.results.set_open(true);
+        if !missing.is_empty() {
+            let tx = self.tx.clone();
+            self.rt.spawn_blocking(move || {
+                for path in missing {
+                    match gdk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 480, -1, true) {
+                        #[allow(deprecated)]
+                        Ok(pb) => {
+                            let tex = gdk::Texture::for_pixbuf(&pb);
+                            let _ = tx.send(Msg::Thumb { path, tex });
+                        }
+                        Err(e) => tracing::warn!("thumbnail {} mislukt: {e}", path.display()),
+                    }
+                }
+            });
+        }
+    }
+
+    fn set_wallpaper(self: &Rc<Self>, keep_open: bool) {
+        let wall = {
+            let ui = self.ui.borrow();
+            ui.view_walls.get(ui.selected).cloned()
+        };
+        let Some(wall) = wall else { return };
+        let cfg = self.cfg().wallpaper.clone();
+        self.rt
+            .spawn_blocking(move || wallpaper::set(&cfg, &wall.path));
+        if !keep_open {
+            self.hide();
+        }
+    }
+
     // ---------------------------------------------------------------- calculator
 
     fn refresh_calc(self: &Rc<Self>, text: &str) {
@@ -1065,6 +1169,7 @@ impl Launcher {
                     self.run_row(row, how);
                 }
             }
+            Some(Mode::Wallpaper) => self.set_wallpaper(how == How::Manager),
             Some(Mode::Calc) => {
                 if how == How::Manager {
                     self.calc_insert();
@@ -1111,7 +1216,9 @@ impl Launcher {
                     self.back_to_general();
                 }
             }
-            Some(Mode::Calc) | Some(Mode::Browser) => self.back_to_general(),
+            Some(Mode::Calc) | Some(Mode::Browser) | Some(Mode::Wallpaper) => {
+                self.back_to_general()
+            }
             _ => self.hide(),
         }
     }
@@ -1128,6 +1235,15 @@ impl Launcher {
                     ui.selected
                 };
                 self.results.grid.select(new);
+            }
+            Some(Mode::Wallpaper) => {
+                let new = {
+                    let mut ui = self.ui.borrow_mut();
+                    let cols = self.cfg().wallpaper.columns.max(1);
+                    ui.selected = grid::navigate(ui.selected, &ui.wall_sections, cols, dir);
+                    ui.selected
+                };
+                self.results.walls.select(new);
             }
             Some(Mode::Files) | Some(Mode::Browser) => {
                 let delta: i32 = match dir {
@@ -1165,7 +1281,10 @@ impl Launcher {
                 if self.bar.entry.text().is_empty()
                     && matches!(
                         mode,
-                        Some(Mode::Files) | Some(Mode::Calc) | Some(Mode::Browser)
+                        Some(Mode::Files)
+                            | Some(Mode::Calc)
+                            | Some(Mode::Browser)
+                            | Some(Mode::Wallpaper)
                     ) =>
             {
                 if mode == Some(Mode::Files) {
@@ -1202,7 +1321,7 @@ impl Launcher {
                 stop
             }
             Key::Left => match mode {
-                Some(Mode::Apps) => {
+                Some(Mode::Apps) | Some(Mode::Wallpaper) => {
                     self.move_selection(Dir::Left);
                     stop
                 }
@@ -1219,7 +1338,7 @@ impl Launcher {
                 _ => glib::Propagation::Proceed,
             },
             Key::Right => match mode {
-                Some(Mode::Apps) => {
+                Some(Mode::Apps) | Some(Mode::Wallpaper) => {
                     self.move_selection(Dir::Right);
                     stop
                 }
@@ -1312,6 +1431,18 @@ impl Launcher {
                 if current {
                     self.refresh(false);
                 }
+            }
+            Msg::Walls(sections) => {
+                self.ui.borrow_mut().walls = Some(sections);
+                if self.ui.borrow().mode == Some(Mode::Wallpaper) {
+                    self.refresh(false);
+                }
+            }
+            Msg::Thumb { path, tex } => {
+                self.results.walls.set_thumb(&path, &tex);
+                let mut ui = self.ui.borrow_mut();
+                ui.thumbs_loading.remove(&path);
+                ui.thumbs.insert(path, tex);
             }
             Msg::FileResults { gen, entries } => {
                 let fresh = {

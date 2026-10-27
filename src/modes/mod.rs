@@ -4,6 +4,7 @@ pub mod apps;
 pub mod browser;
 pub mod calc;
 pub mod files;
+pub mod wallpaper;
 
 use std::path::PathBuf;
 
@@ -13,6 +14,7 @@ pub enum Mode {
     Files,
     Calc,
     Browser,
+    Wallpaper,
 }
 
 impl Mode {
@@ -24,6 +26,7 @@ impl Mode {
             'f' => Some(Mode::Files),
             'c' => Some(Mode::Calc),
             'b' => Some(Mode::Browser),
+            'w' => Some(Mode::Wallpaper),
             _ => None,
         }
     }
@@ -34,6 +37,7 @@ impl Mode {
             Mode::Files => "folder",
             Mode::Calc => "calculator",
             Mode::Browser => "globe",
+            Mode::Wallpaper => "image",
         }
     }
 
@@ -43,6 +47,7 @@ impl Mode {
             Mode::Files => "Bestanden  (f)",
             Mode::Calc => "Calculator  (c)",
             Mode::Browser => "Browser  (b)",
+            Mode::Wallpaper => "Wallpapers  (w)",
         }
     }
 
@@ -52,6 +57,7 @@ impl Mode {
             Mode::Files => "Find folders and files",
             Mode::Calc => "Calculate...",
             Mode::Browser => "Browse the web or bookmarks...",
+            Mode::Wallpaper => "Find a wallpaper...",
         }
     }
 }

@@ -1,7 +1,7 @@
 //! Resultaatgebied onder de zoekbalk: lijst, app-grid, calculator en lege staat.
 
 use crate::modes::ListRow;
-use crate::ui::{grid::Grid, icons};
+use crate::ui::{grid::Grid, icons, walls::Walls};
 use gtk::glib;
 use gtk::prelude::*;
 use gtk4 as gtk;
@@ -17,6 +17,7 @@ pub enum CalcView {
 pub struct Results {
     pub revealer: gtk::Revealer,
     pub grid: Grid,
+    pub walls: Walls,
     stack: gtk::Stack,
     list_scroll: gtk::ScrolledWindow,
     list_box: gtk::Box,
@@ -65,6 +66,9 @@ impl Results {
         let grid = Grid::new(max_height);
         stack.add_named(&grid.scroll, Some("grid"));
 
+        let walls = Walls::new(max_height);
+        stack.add_named(&walls.scroll, Some("walls"));
+
         let calc = gtk::Box::new(gtk::Orientation::Vertical, 4);
         calc.set_margin_top(18);
         calc.set_margin_bottom(14);
@@ -104,6 +108,7 @@ impl Results {
         Self {
             revealer,
             grid,
+            walls,
             stack,
             list_scroll,
             list_box,
@@ -124,10 +129,14 @@ impl Results {
     /// Sidebar: resultaten vullen de kaart tot onderaan; center: begrensd op `max_height`.
     pub fn set_fill(&self, fill: bool, max_height: i32) {
         self.revealer.set_vexpand(fill);
-        for s in [&self.list_scroll, &self.grid.scroll] {
+        for s in [&self.list_scroll, &self.grid.scroll, &self.walls.scroll] {
             s.set_vexpand(fill);
             s.set_max_content_height(if fill { -1 } else { max_height });
         }
+    }
+
+    pub fn show_walls(&self) {
+        self.stack.set_visible_child_name("walls");
     }
 
     pub fn show_grid(&self) {

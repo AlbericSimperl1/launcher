@@ -64,17 +64,36 @@ waarden via de Hyprland-socket zolang hij open is en zet ze bij sluiten terug. C
 open is, dan blijft zijn waarde staan tot je Hyprland herlaadt. Met `opacity` regel je hoeveel van de blur
 door de kaart heen zichtbaar is.
 
+## Wallpapers (awww)
+
+De `w`-modus toont `~/Pictures/wallpapers` (submappen = thema's) en zet de wallpaper met `awww img`
+(instelbaar via `[wallpaper] command`). Start de daemon zelf bij het inloggen en zet de wallpaper in
+Noctalia uit, anders tekenen ze allebei:
+
+```ini
+exec-once = awww-daemon
+```
+
+Draait `awww-daemon` niet, dan start de launcher hem bij de eerste keer zetten.
+
+## Plaatsing
+
+`placement` in `[appearance]`: `"center"` (standaard), `"sidebar"` (links, `sidebar_width` × schermhoogte)
+of `"hover"` (muis tegen de linkerrand opent de sidebar en sluit weer als de muis hem verlaat; de keybind
+opent de centered versie). `[apps] layout = "list"` toont apps als lijst met icoon, naam en commando.
+
 ## Gebruik
 
 | Actie | Toets |
 |---|---|
 | Openen / sluiten | `rust-launcher` (toggle), `Esc` |
-| Modus via vlag | `f␣` bestanden · `c␣` calculator · `b␣` browser · gewoon typen = apps |
+| Modus via vlag | `f␣` bestanden · `c␣` calculator · `b␣` browser · `w␣` wallpapers · gewoon typen = apps |
 | Modus via knop | klik op een icoon naast de zoekbalk |
 | Navigeren | pijltjes; `→`/`←` in bestanden: map in / één niveau terug |
 | Bestanden | `Enter` xdg-open · `Ctrl+Enter` file manager · `Shift+Enter` editor · `Ctrl+H` verborgen |
 | Calculator | `Enter` kopieert + leegt · `Ctrl+Enter`/`Tab` voegt resultaat in · `ans` = vorig resultaat |
 | Apps | `Enter`/klik start · rechtermuisknop: pin/verberg · `Ctrl+P` pin |
+| Wallpapers | pijltjes door de thema's · `Enter` zetten + sluiten · `Ctrl+Enter` zetten en open blijven · typ een thema om te filteren |
 
 CLI: `--daemon`, `--show`, `--hide`, `--toggle`, `--unhide-all` (verborgen apps terugzetten).
 
@@ -94,4 +113,5 @@ CLI: `--daemon`, `--show`, `--hide`, `--toggle`, `--unhide-all` (verborgen apps 
 - `modes/files.rs` — BFS-index, nucleo-matching, openen via xdg-open / file manager / editor.
 - `modes/browser.rs` — URL-detectie, zoek-URL, openen in nieuw tabblad.
 - `modes/apps.rs` — filter + pins boven, divider, rest alfabetisch.
+- `modes/wallpaper.rs` — thema-mappen scannen, filteren, zetten via awww.
 - `ui/*` — zoekbalk, resultaten, grid, thema (CSS) en iconen.
