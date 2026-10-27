@@ -17,6 +17,9 @@ max_height = 440          # maximale hoogte van het resultatengebied in px
 border_width = 1          # randdikte van de kaart in px
 placement = "center"      # "center" | "sidebar" | "hover" (muis tegen linkerrand = sidebar, keybind = center)
 sidebar_width = 440       # breedte van de sidebar in px (hoogte = schermhoogte)
+sidebar_margin_top = 8    # afstand tot de bovenrand, bv. hoogte van je bar
+sidebar_margin_bottom = 8
+sidebar_margin_side = 8   # afstand tot de linkerrand
 
 [files]
 start_dir = "~"

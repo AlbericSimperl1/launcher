@@ -154,6 +154,9 @@ impl Settings {
         spin(c, "Breedte (center)", "appearance", "width", 300.0, 1600.0, 10.0, 0, a.width as f64);
         spin(c, "Max. hoogte (center)", "appearance", "max_height", 150.0, 1400.0, 10.0, 0, a.max_height as f64);
         spin(c, "Breedte (sidebar)", "appearance", "sidebar_width", 200.0, 1200.0, 10.0, 0, a.sidebar_width as f64);
+        spin(c, "Marge boven (sidebar)", "appearance", "sidebar_margin_top", 0.0, 400.0, 2.0, 0, a.sidebar_margin_top as f64);
+        spin(c, "Marge onder (sidebar)", "appearance", "sidebar_margin_bottom", 0.0, 400.0, 2.0, 0, a.sidebar_margin_bottom as f64);
+        spin(c, "Marge zijkant (sidebar)", "appearance", "sidebar_margin_side", 0.0, 400.0, 2.0, 0, a.sidebar_margin_side as f64);
 
         spin(c, "Animatieduur (ms)", "appearance", "animation_ms", 0.0, 1000.0, 10.0, 0, a.animation_ms as f64);
 

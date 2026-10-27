@@ -40,6 +40,10 @@ pub struct Appearance {
     /// "center" | "sidebar" | "hover" (muis tegen linkerrand = sidebar, keybind = center)
     pub placement: String,
     pub sidebar_width: i32,
+    /// Afstand van de sidebar tot de schermranden in px (bv. om ruimte te laten voor een bar).
+    pub sidebar_margin_top: i32,
+    pub sidebar_margin_bottom: i32,
+    pub sidebar_margin_side: i32,
 }
 
 impl Default for Appearance {
@@ -61,6 +65,9 @@ impl Default for Appearance {
             border_width: 1,
             placement: "center".into(),
             sidebar_width: 440,
+            sidebar_margin_top: 8,
+            sidebar_margin_bottom: 8,
+            sidebar_margin_side: 8,
         }
     }
 }

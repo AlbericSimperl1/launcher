@@ -379,17 +379,18 @@ impl Launcher {
         let cfg = self.cfg();
         let a = &cfg.appearance;
         let sidebar = self.ui.borrow().sidebar;
-        let (width, align, valign, margin) = if sidebar {
-            (a.sidebar_width, gtk::Align::Start, gtk::Align::Fill, 8)
+        let (width, align, valign, (top, bottom, side)) = if sidebar {
+            let m = (a.sidebar_margin_top, a.sidebar_margin_bottom, a.sidebar_margin_side);
+            (a.sidebar_width, gtk::Align::Start, gtk::Align::Fill, m)
         } else {
-            (a.width, gtk::Align::Center, gtk::Align::Center, 0)
+            (a.width, gtk::Align::Center, gtk::Align::Center, (0, 0, 0))
         };
         self.card.set_width_request(width);
         self.slide.set_halign(align);
         self.slide.set_valign(valign);
-        self.slide.set_margin_top(margin);
-        self.slide.set_margin_bottom(margin);
-        self.slide.set_margin_start(margin);
+        self.slide.set_margin_top(top.max(0));
+        self.slide.set_margin_bottom(bottom.max(0));
+        self.slide.set_margin_start(side.max(0));
         self.slide.set_transition_type(if sidebar {
             gtk::RevealerTransitionType::SlideRight
         } else {
