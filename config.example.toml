@@ -36,7 +36,8 @@ bookmarks_path = ""       # leeg = automatisch (Firefox/LibreWolf/Zen places.sql
 
 [apps]
 columns = 6
-icon_size = 32
+icon_size = 32            # icoongrootte in de centered launcher (grid en list)
+sidebar_icon_size = 32    # icoongrootte in de sidebar
 extra_dirs = []           # extra mappen met .desktop-bestanden
 layout = "grid"           # "grid" | "list"
 show_names = true         # namen onder de iconen in grid-mode

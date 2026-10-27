@@ -148,10 +148,14 @@ impl Settings {
         choice(c, "Plaatsing", "appearance", "placement", &["center", "sidebar", "hover"], &a.placement);
         choice(c, "Apps", "apps", "layout", &["grid", "list"], &cfg.apps.layout);
         toggle(c, "Namen in grid", "apps", "show_names", cfg.apps.show_names);
+        spin(c, "Icoongrootte (center)", "apps", "icon_size", 16.0, 128.0, 2.0, 0, cfg.apps.icon_size as f64);
+        spin(c, "Icoongrootte (sidebar)", "apps", "sidebar_icon_size", 16.0, 128.0, 2.0, 0, cfg.apps.sidebar_icon_size as f64);
         spin(c, "Kolommen (grid)", "apps", "columns", 1.0, 12.0, 1.0, 0, cfg.apps.columns as f64);
         spin(c, "Breedte (center)", "appearance", "width", 300.0, 1600.0, 10.0, 0, a.width as f64);
         spin(c, "Max. hoogte (center)", "appearance", "max_height", 150.0, 1400.0, 10.0, 0, a.max_height as f64);
         spin(c, "Breedte (sidebar)", "appearance", "sidebar_width", 200.0, 1200.0, 10.0, 0, a.sidebar_width as f64);
+
+        spin(c, "Animatieduur (ms)", "appearance", "animation_ms", 0.0, 1000.0, 10.0, 0, a.animation_ms as f64);
 
         header(c, "Standaard apps");
         text(c, "Terminal", "files", "terminal", &cfg.files.terminal);

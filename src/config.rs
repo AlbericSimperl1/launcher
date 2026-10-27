@@ -133,7 +133,9 @@ impl Default for Browser {
 #[serde(default)]
 pub struct Apps {
     pub columns: usize,
+    /// Icoongrootte in de centered launcher; `sidebar_icon_size` in de sidebar (grid én list).
     pub icon_size: i32,
+    pub sidebar_icon_size: i32,
     pub extra_dirs: Vec<String>,
     /// "grid" | "list"
     pub layout: String,
@@ -146,6 +148,7 @@ impl Default for Apps {
         Self {
             columns: 6,
             icon_size: 40,
+            sidebar_icon_size: 32,
             extra_dirs: Vec::new(),
             layout: "grid".into(),
             show_names: true,

@@ -2,6 +2,8 @@
 
 use crate::config;
 use crate::util::{self, Fuzzy};
+use gtk4::{gdk, gdk_pixbuf, glib};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -72,6 +74,28 @@ pub fn filter(sections: &[Section], query: &str) -> Vec<Section> {
         })
         .filter(|(_, w): &Section| !w.is_empty())
         .collect()
+}
+
+const THUMB_W: i32 = 320;
+
+/// Thumbnail uit de schijfcache (sleutel: pad + mtime), anders gedecodeerd en daar bewaard,
+/// zodat een herstart van de daemon niet alle wallpapers opnieuw hoeft te decoderen.
+pub fn thumbnail(path: &Path) -> Result<gdk::Texture, glib::Error> {
+    let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let mut h = DefaultHasher::new();
+    (path, mtime, THUMB_W).hash(&mut h);
+    let dir = util::cache_dir().join("thumbs");
+    let cached = dir.join(format!("{:016x}.png", h.finish()));
+    if let Ok(tex) = gdk::Texture::from_filename(&cached) {
+        return Ok(tex);
+    }
+    let pb = gdk_pixbuf::Pixbuf::from_file_at_scale(path, THUMB_W, -1, true)?;
+    let _ = std::fs::create_dir_all(&dir);
+    if let Err(e) = pb.savev(&cached, "png", &[]) {
+        tracing::warn!("thumbnail-cache {} mislukt: {e}", cached.display());
+    }
+    #[allow(deprecated)]
+    Ok(gdk::Texture::for_pixbuf(&pb))
 }
 
 /// Blokkeert kort als awww-daemon nog moet starten: aanroepen buiten de GTK-thread.

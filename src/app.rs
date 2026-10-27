@@ -100,6 +100,8 @@ struct Ui {
 pub struct Launcher {
     window: gtk::ApplicationWindow,
     card: gtk::Box,
+    slide: gtk::Revealer,
+    hide_timer: RefCell<Option<glib::SourceId>>,
     bar: Bar,
     results: Results,
     cfg: RefCell<Rc<Config>>,
@@ -161,10 +163,14 @@ impl Launcher {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
         card.add_css_class("card");
         card.set_width_request(cfg.appearance.width);
-        card.set_halign(gtk::Align::Center);
-        card.set_valign(gtk::Align::Center);
         card.set_vexpand(true);
-        root.append(&card);
+        // Plaatsing (uitlijning, marges) zit op de revealer: die schuift de sidebar in en uit.
+        let slide = gtk::Revealer::new();
+        slide.set_child(Some(&card));
+        slide.set_halign(gtk::Align::Center);
+        slide.set_valign(gtk::Align::Center);
+        slide.set_vexpand(true);
+        root.append(&slide);
         window.set_child(Some(&root));
 
         let files_root = {
@@ -189,6 +195,8 @@ impl Launcher {
             Launcher {
                 window,
                 card,
+                slide,
+                hide_timer: RefCell::new(None),
                 bar,
                 results,
                 rt,
@@ -235,6 +243,7 @@ impl Launcher {
         launcher.connect_signals(root);
         launcher.watch_config();
         launcher.update_edge();
+        launcher.scan_walls();
         launcher.reload_apps();
         launcher
     }
@@ -376,11 +385,17 @@ impl Launcher {
             (a.width, gtk::Align::Center, gtk::Align::Center, 0)
         };
         self.card.set_width_request(width);
-        self.card.set_halign(align);
-        self.card.set_valign(valign);
-        self.card.set_margin_top(margin);
-        self.card.set_margin_bottom(margin);
-        self.card.set_margin_start(margin);
+        self.slide.set_halign(align);
+        self.slide.set_valign(valign);
+        self.slide.set_margin_top(margin);
+        self.slide.set_margin_bottom(margin);
+        self.slide.set_margin_start(margin);
+        self.slide.set_transition_type(if sidebar {
+            gtk::RevealerTransitionType::SlideRight
+        } else {
+            gtk::RevealerTransitionType::None
+        });
+        self.slide.set_transition_duration(a.animation_ms);
         self.results.set_fill(sidebar, a.max_height);
     }
 
@@ -410,6 +425,10 @@ impl Launcher {
 
     /// `hover`: geopend via de linkerrand, altijd als sidebar.
     fn show_as(self: &Rc<Self>, hover: bool) {
+        // Nog aan het uitschuiven: afbreken, de revealer schuift vanaf hier weer in.
+        if let Some(id) = self.hide_timer.borrow_mut().take() {
+            id.remove();
+        }
         {
             let mut ui = self.ui.borrow_mut();
             if ui.visible {
@@ -435,6 +454,14 @@ impl Launcher {
         self.apply_blur_strength();
         self.window.set_visible(true);
         self.window.present();
+        // Pas op het eerste frame inschuiven: anders is de animatie al voorbij voordat er iets getekend is.
+        let me = self.clone();
+        self.window.add_tick_callback(move |_, _| {
+            if me.ui.borrow().visible {
+                me.slide.set_reveal_child(true);
+            }
+            glib::ControlFlow::Break
+        });
         self.bar.entry.grab_focus();
         self.reload_apps();
     }
@@ -449,6 +476,21 @@ impl Launcher {
             ui.by_hover = false;
         }
         self.cancel_leave();
+        self.slide.set_reveal_child(false);
+        if self.ui.borrow().sidebar {
+            let me = self.clone();
+            let ms = self.slide.transition_duration() as u64;
+            let id = glib::timeout_add_local_once(Duration::from_millis(ms), move || {
+                me.hide_timer.borrow_mut().take();
+                me.finish_hide();
+            });
+            *self.hide_timer.borrow_mut() = Some(id);
+        } else {
+            self.finish_hide();
+        }
+    }
+
+    fn finish_hide(self: &Rc<Self>) {
         self.window.set_visible(false);
         self.restore_blur_strength();
         self.reset();
@@ -731,7 +773,11 @@ impl Launcher {
                 &pinned,
                 &rest,
                 cols,
-                self.cfg().apps.icon_size,
+                if self.ui.borrow().sidebar {
+                    self.cfg().apps.sidebar_icon_size
+                } else {
+                    self.cfg().apps.icon_size
+                },
                 tile_w,
                 selected,
                 Rc::new(move |i| a.activate_index(i)),
@@ -1049,7 +1095,7 @@ impl Launcher {
         self.bar.set_crumb(None);
         let cols = self.cfg().wallpaper.columns.max(1);
         let tile_w = (self.card.width_request() - 28 - 24) / cols as i32;
-        let (sections, selected, missing) = {
+        let (sections, selected) = {
             let mut ui = self.ui.borrow_mut();
             let Some(all) = ui.walls.as_ref() else {
                 drop(ui);
@@ -1061,14 +1107,7 @@ impl Launcher {
             ui.view_walls = sections.iter().flat_map(|(_, w)| w.iter().cloned()).collect();
             ui.wall_sections = sections.iter().map(|(_, w)| w.len()).collect();
             ui.selected = ui.selected.min(ui.view_walls.len().saturating_sub(1));
-            let missing: Vec<PathBuf> = ui
-                .view_walls
-                .iter()
-                .map(|w| w.path.clone())
-                .filter(|p| !ui.thumbs.contains_key(p) && !ui.thumbs_loading.contains(p))
-                .collect();
-            ui.thumbs_loading.extend(missing.iter().cloned());
-            (sections, ui.selected, missing)
+            (sections, ui.selected)
         };
         if sections.is_empty() {
             let dir = self.cfg().wallpaper.dir.clone();
@@ -1086,14 +1125,31 @@ impl Launcher {
             self.results.show_walls();
         }
         self.results.set_open(true);
-        if !missing.is_empty() {
-            let tx = self.tx.clone();
+    }
+
+    /// Laadt alle ontbrekende thumbnails (ook buiten de huidige filter) over een paar threads.
+    fn load_thumbs(&self) {
+        let missing: Vec<PathBuf> = {
+            let mut ui = self.ui.borrow_mut();
+            let missing: Vec<PathBuf> = ui
+                .walls
+                .iter()
+                .flatten()
+                .flat_map(|(_, walls)| walls.iter().map(|w| w.path.clone()))
+                .filter(|p| !ui.thumbs.contains_key(p) && !ui.thumbs_loading.contains(p))
+                .collect();
+            ui.thumbs_loading.extend(missing.iter().cloned());
+            missing
+        };
+        if missing.is_empty() {
+            return;
+        }
+        for part in missing.chunks(missing.len().div_ceil(4)) {
+            let (tx, part) = (self.tx.clone(), part.to_vec());
             self.rt.spawn_blocking(move || {
-                for path in missing {
-                    match gdk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 480, -1, true) {
-                        #[allow(deprecated)]
-                        Ok(pb) => {
-                            let tex = gdk::Texture::for_pixbuf(&pb);
+                for path in part {
+                    match wallpaper::thumbnail(&path) {
+                        Ok(tex) => {
                             let _ = tx.send(Msg::Thumb { path, tex });
                         }
                         Err(e) => tracing::warn!("thumbnail {} mislukt: {e}", path.display()),
@@ -1487,6 +1543,7 @@ impl Launcher {
             }
             Msg::Walls(sections) => {
                 self.ui.borrow_mut().walls = Some(sections);
+                self.load_thumbs();
                 if self.ui.borrow().mode == Some(Mode::Wallpaper) {
                     self.refresh(false);
                 }
