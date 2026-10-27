@@ -39,11 +39,12 @@ columns = 6
 icon_size = 32
 extra_dirs = []           # extra mappen met .desktop-bestanden
 layout = "grid"           # "grid" | "list"
+show_names = true         # namen onder de iconen in grid-mode
 
 [calc]
 close_on_copy = false     # sluit de launcher na Enter (kopiëren)
 
 [wallpaper]
 dir = "~/Pictures/wallpapers"  # submappen zijn thema's
-command = "awww img"           # pad wordt achteraan toegevoegd; bv. "awww img --transition-type grow"
+command = "awww img --transition-type fade --transition-duration 0.4 --transition-fps 60"  # pad wordt achteraan toegevoegd
 columns = 3

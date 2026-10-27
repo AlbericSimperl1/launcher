@@ -104,10 +104,13 @@ fn app_icon(icon: &str, size: i32) -> gtk::Image {
     img
 }
 
-fn grid_tile(app: &DesktopApp, icon_size: i32, tile_w: i32) -> gtk::Box {
+fn grid_tile(app: &DesktopApp, icon_size: i32, tile_w: i32, show_name: bool) -> gtk::Box {
     let tile = gtk::Box::new(gtk::Orientation::Vertical, 6);
     tile.add_css_class("tile");
     tile.append(&app_icon(&app.icon, icon_size));
+    if !show_name {
+        return tile;
+    }
     let label = gtk::Label::new(Some(&app.name));
     label.add_css_class("name");
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -185,6 +188,7 @@ impl Grid {
         on_click: Rc<dyn Fn(usize)>,
         on_context: Rc<dyn Fn(usize, &gtk::Widget, f64, f64)>,
         list: bool,
+        show_names: bool,
     ) {
         for g in [&self.pinned, &self.rest] {
             while let Some(c) = g.first_child() {
@@ -198,7 +202,7 @@ impl Grid {
                 let tile = if list {
                     list_tile(app, icon_size)
                 } else {
-                    grid_tile(app, icon_size, tile_w)
+                    grid_tile(app, icon_size, tile_w, show_names)
                 };
                 tile.set_size_request(tile_w, -1);
                 tile.set_tooltip_text(Some(&app.name));

@@ -137,6 +137,8 @@ pub struct Apps {
     pub extra_dirs: Vec<String>,
     /// "grid" | "list"
     pub layout: String,
+    /// Namen onder de iconen in grid-mode (de tooltip toont de naam altijd).
+    pub show_names: bool,
 }
 
 impl Default for Apps {
@@ -146,6 +148,7 @@ impl Default for Apps {
             icon_size: 40,
             extra_dirs: Vec::new(),
             layout: "grid".into(),
+            show_names: true,
         }
     }
 }
@@ -170,7 +173,7 @@ impl Default for Wallpaper {
     fn default() -> Self {
         Self {
             dir: "~/Pictures/wallpapers".into(),
-            command: "awww img".into(),
+            command: "awww img --transition-type fade --transition-duration 0.4 --transition-fps 60".into(),
             columns: 3,
         }
     }

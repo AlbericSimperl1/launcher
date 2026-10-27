@@ -95,7 +95,7 @@ opent de centered versie). `[apps] layout = "list"` toont apps als lijst met ico
 | Apps | `Enter`/klik start · rechtermuisknop: pin/verberg · `Ctrl+P` pin |
 | Wallpapers | pijltjes door de thema's · `Enter` zetten + sluiten · `Ctrl+Enter` zetten en open blijven · typ een thema om te filteren |
 
-CLI: `--daemon`, `--show`, `--hide`, `--toggle`, `--unhide-all` (verborgen apps terugzetten), `--settings`.
+CLI: `--daemon`, `--show`, `--hide`, `--toggle`, `--unhide-all` (verborgen apps terugzetten), `--settings`, `--wallpaper`.
 
 ## Settings
 

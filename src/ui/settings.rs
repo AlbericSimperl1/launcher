@@ -65,6 +65,13 @@ fn spin(content: &gtk::Box, label: &str, sec: &'static str, key: &'static str, m
     row(content, label, &sb);
 }
 
+fn toggle(content: &gtk::Box, label: &str, sec: &'static str, key: &'static str, cur: bool) {
+    let sw = gtk::Switch::new();
+    sw.set_active(cur);
+    sw.connect_active_notify(move |s| save(sec, key, s.is_active()));
+    row(content, label, &sw);
+}
+
 /// Schrijft bij Enter of focusverlies, niet per toetsaanslag.
 fn text(content: &gtk::Box, label: &str, sec: &'static str, key: &'static str, cur: &str) -> gtk::Entry {
     let e = gtk::Entry::new();
@@ -140,6 +147,7 @@ impl Settings {
         header(c, "Indeling");
         choice(c, "Plaatsing", "appearance", "placement", &["center", "sidebar", "hover"], &a.placement);
         choice(c, "Apps", "apps", "layout", &["grid", "list"], &cfg.apps.layout);
+        toggle(c, "Namen in grid", "apps", "show_names", cfg.apps.show_names);
         spin(c, "Kolommen (grid)", "apps", "columns", 1.0, 12.0, 1.0, 0, cfg.apps.columns as f64);
         spin(c, "Breedte (center)", "appearance", "width", 300.0, 1600.0, 10.0, 0, a.width as f64);
         spin(c, "Max. hoogte (center)", "appearance", "max_height", 150.0, 1400.0, 10.0, 0, a.max_height as f64);

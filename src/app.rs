@@ -293,24 +293,30 @@ impl Launcher {
         });
         root.add_controller(click);
 
-        // Via hover geopend: sluiten zodra de muis de kaart verlaat (met korte vertraging).
+        // Via hover geopend: sluiten zodra de muis rechts van de kaart komt (met korte vertraging).
+        // De marge links van de kaart telt als binnen, anders opent de rand-strook hem meteen opnieuw.
         let motion = gtk::EventControllerMotion::new();
-        let me = self.clone();
-        motion.connect_enter(move |_, _, _| me.cancel_leave());
-        let me = self.clone();
-        motion.connect_leave(move |_| {
+        let (me, root2) = (self.clone(), root.clone());
+        motion.connect_motion(move |_, x, _| {
             if !me.ui.borrow().by_hover || me.menu_open.get() {
                 return;
             }
-            me.cancel_leave();
-            let me2 = me.clone();
-            let id = glib::timeout_add_local_once(Duration::from_millis(250), move || {
-                me2.leave_timer.borrow_mut().take();
-                me2.hide();
-            });
-            *me.leave_timer.borrow_mut() = Some(id);
+            let right = me
+                .card
+                .compute_bounds(&root2)
+                .map_or(f64::MAX, |b| (b.x() + b.width()) as f64);
+            if x <= right {
+                me.cancel_leave();
+            } else if me.leave_timer.borrow().is_none() {
+                let me2 = me.clone();
+                let id = glib::timeout_add_local_once(Duration::from_millis(250), move || {
+                    me2.leave_timer.borrow_mut().take();
+                    me2.hide();
+                });
+                *me.leave_timer.borrow_mut() = Some(id);
+            }
         });
-        self.card.add_controller(motion);
+        root.add_controller(motion);
     }
 
     fn cancel_leave(&self) {
@@ -338,15 +344,18 @@ impl Launcher {
         }
         w.add_css_class("edge");
         w.init_layer_shell();
-        w.set_namespace("rust-launcher-edge");
+        w.set_namespace("rl-hover-edge");
         w.set_layer(Layer::Top);
         w.set_keyboard_mode(KeyboardMode::None);
         w.set_exclusive_zone(0);
         for e in [Edge::Left, Edge::Top, Edge::Bottom] {
             w.set_anchor(e, true);
         }
-        w.set_size_request(2, -1);
-        w.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+        // Zonder inhoud valt GTK terug op 200px breed; dat zou de linkerrand van het scherm blokkeren.
+        let strip = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        strip.set_size_request(2, -1);
+        w.set_child(Some(&strip));
+        w.set_default_size(2, -1);
         let motion = gtk::EventControllerMotion::new();
         let me = self.clone();
         motion.connect_enter(move |_, _, _| me.show_as(true));
@@ -446,10 +455,11 @@ impl Launcher {
         self.reload_apps();
     }
 
-    pub fn open_settings(self: &Rc<Self>) {
+    /// Toont de launcher direct in een modus (`--settings`, `--wallpaper`).
+    pub fn open_mode(self: &Rc<Self>, mode: Mode) {
         self.show();
         self.clear_entry();
-        self.choose_mode(Mode::Settings);
+        self.choose_mode(mode);
     }
 
     pub fn unhide_all(self: &Rc<Self>) {
@@ -727,6 +737,7 @@ impl Launcher {
                 Rc::new(move |i| a.activate_index(i)),
                 Rc::new(move |i, w, x, y| b.show_app_menu(i, w, x, y)),
                 self.cfg().apps.layout == "list",
+                self.cfg().apps.show_names,
             );
             self.results.show_grid();
         }

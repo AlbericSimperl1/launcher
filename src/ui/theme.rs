@@ -145,7 +145,7 @@ button.mode.active {{ background: {accent}; }}
 .wall.selected {{ background: {accent}; }}
 .wall picture {{ border-radius: {inner}px; }}
 .wall .name {{ font-size: 11px; color: {dim}; }}
-window.edge {{ background: transparent; }}
+window.edge {{ background: rgba(0, 0, 0, 0.01); }}
 
 .empty {{ color: {dim}; font-size: 13px; padding: 20px 0; }}
 .calc-result {{ font-size: 36px; font-weight: 200; }}

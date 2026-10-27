@@ -28,6 +28,7 @@ Gebruik: rust-launcher [OPTIE]
   --toggle       toon of verberg de launcher
   --unhide-all   maak alle verborgen apps weer zichtbaar
   --settings     open het settingspanel
+  --wallpaper    open de wallpaper-kiezer
   --help, -h     toon deze hulp
 ";
 
@@ -40,6 +41,7 @@ enum Cmd {
     UnhideAll,
     Reload,
     Settings,
+    Wallpaper,
     Help,
 }
 
@@ -52,6 +54,7 @@ fn parse(args: &[String]) -> Cmd {
             "--unhide-all" => return Cmd::UnhideAll,
             "--reload" => return Cmd::Reload,
             "--settings" => return Cmd::Settings,
+            "--wallpaper" => return Cmd::Wallpaper,
 
             "--help" | "-h" => return Cmd::Help,
             _ => {}
@@ -166,7 +169,8 @@ fn main() -> glib::ExitCode {
             Cmd::Show => instance.show(),
             Cmd::Hide => instance.hide(),
             Cmd::Reload => instance.reload(),
-            Cmd::Settings => instance.open_settings(),
+            Cmd::Settings => instance.open_mode(modes::Mode::Settings),
+            Cmd::Wallpaper => instance.open_mode(modes::Mode::Wallpaper),
 
             Cmd::Toggle => instance.toggle(),
             Cmd::UnhideAll => instance.unhide_all(),
